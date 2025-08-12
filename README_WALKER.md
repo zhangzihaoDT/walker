@@ -95,7 +95,7 @@ strategy = walker.generate_strategy(
 ModuleExecutor 负责将策略转换为可执行的计划：
 
 ```python
-from core.module_executor import get_module_executor
+from agents.module_executor import get_module_executor
 
 executor = get_module_executor()
 execution_plan = executor.create_execution_plan(strategy)

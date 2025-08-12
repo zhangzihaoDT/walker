@@ -116,7 +116,7 @@ class BaseAnalysisModule(ABC):
             summary = self.summarize(results)
             
             # 构建标准化结果
-            return {
+            result = {
                 "success": True,
                 "module": self.module_name,
                 "parameters": parameters,
@@ -127,6 +127,14 @@ class BaseAnalysisModule(ABC):
                 "summary": summary,
                 "timestamp": datetime.now().isoformat()
             }
+            
+            # 添加额外的字段信息（如果存在）
+            if 'field_info' in results:
+                result['field_info'] = results['field_info']
+            if 'available_fields' in results:
+                result['available_fields'] = results['available_fields']
+            
+            return result
             
         except Exception as e:
             return self._handle_error(e, parameters)

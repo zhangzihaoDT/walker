@@ -25,7 +25,7 @@ from llm.prompts import (
 )
 from modules.run_data_describe import DataAnalyzer
 from .walker import get_walker
-from .module_executor import get_module_executor
+from agents.module_executor import get_module_executor
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

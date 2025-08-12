@@ -68,121 +68,134 @@ core/
 
 ## 骨架代码参考
 
-明白！下面是一个**融合 LLM 进行策略辅助生成的 Walker 骨架示例**，演示如何结合规则与 LLM 共同驱动策略生成，并且保持模块化、易扩展：
+好的！下面是一个简化版的 `walker.py` 骨架示例，展示了如何：
+
+- 定义 Walker 类
+- 结合意图、模块列表、数据库列表进行策略搜索
+- 验证模块和数据库是否适用
+- 生成并返回策略集（包含模块实例、参数和数据库信息）
+- 支持策略执行入口调用分析模块
 
 ```python
-from typing import List, Dict, Any
-import random
+# core/walker.py
 
-class BaseModule:
-    """分析模块基类"""
-    module_id: str
-    supported_intents: List[str]
-    supported_databases: List[str]
+from typing import List, Dict, Any, Optional
+from modules import trend_analysis, yoy_comparison  # 示例模块导入
+import logging
 
-    def can_handle(self, intent: str, db: str) -> bool:
-        return intent in self.supported_intents and db in self.supported_databases
+logger = logging.getLogger(__name__)
 
-    def execute(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
-        raise NotImplementedError
+class Strategy:
+    """策略单元，绑定模块、参数和数据库信息"""
+    def __init__(self, module_instance, parameters: Dict[str, Any], db_info: Dict[str, Any]):
+        self.module = module_instance
+        self.parameters = parameters
+        self.db_info = db_info
 
-
-class LLMWrapper:
-    """简单模拟 LLM 调用接口"""
-    def generate_strategy_suggestions(self, intent: str, context: Dict[str, Any]) -> List[Dict[str, Any]]:
-        # 这里用伪代码模拟LLM生成策略建议
-        # 实际中调用API或本地模型推理
-        print(f"[LLM] 生成策略建议，意图: {intent}，上下文: {context}")
-        # 模拟返回一组策略候选（每个是字典，包含模块ID和数据库等）
-        return [
-            {"module_id": "trend_analysis", "database": "db_sales"},
-            {"module_id": "penetration_analysis", "database": "db_market"},
-        ]
+    def execute(self) -> Dict[str, Any]:
+        """调用模块执行方法"""
+        data_context = {
+            "db_info": self.db_info,
+            # 这里可以扩展更多上下文信息，如schema、表名等
+        }
+        logger.info(f"执行策略：模块={self.module.module_name}, DB={self.db_info.get('name')}")
+        return self.module.execute(self.parameters, data_context)
 
 
 class Walker:
-    def __init__(self, modules: List[BaseModule], llm: LLMWrapper):
-        self.modules = {m.module_id: m for m in modules}
-        self.llm = llm
+    """策略探索器"""
 
-    def generate_strategy(self, intent: str, context: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def __init__(self, modules: List[Any], databases: List[Dict[str, Any]]):
         """
-        结合规则和LLM，生成策略列表
-
-        :param intent: 用户意图
-        :param context: 上下文信息，如历史交互、可用数据库列表等
-        :return: 策略列表，每条策略包含module_id和数据库信息
+        Args:
+            modules: 已注册的分析模块列表，模块实例或类
+            databases: 数据库信息列表，每个元素为字典包含必要连接和元数据
         """
-        print(f"[Walker] 根据意图 '{intent}' 生成基础规则策略")
-        # 规则层筛选符合意图的模块和数据库
-        available_dbs = context.get("available_databases", [])
-        candidate_strategies = []
-        for db in available_dbs:
-            for module in self.modules.values():
-                if module.can_handle(intent, db):
-                    candidate_strategies.append({"module_id": module.module_id, "database": db})
+        self.modules = modules
+        self.databases = databases
 
-        print(f"[Walker] 规则筛选策略数: {len(candidate_strategies)}")
+    def _module_supports_intent(self, module, intent: str) -> bool:
+        """判断模块是否支持当前意图（简化逻辑）"""
+        # 真实逻辑可以用模块自带的支持意图列表或判断函数
+        supported_intents = getattr(module, "supported_intents", [])
+        return intent in supported_intents
 
-        # LLM辅助生成策略建议
-        llm_suggestions = self.llm.generate_strategy_suggestions(intent, context)
+    def _is_db_suitable(self, db_info: Dict[str, Any], module) -> bool:
+        """判断模块是否支持使用该数据库（简化示例）"""
+        # 可根据模块要求，数据库类型，数据权限等做判断
+        required_db_types = getattr(module, "required_db_types", None)
+        if not required_db_types:
+            return True
+        return db_info.get("type") in required_db_types
 
-        # 合并规则与LLM建议（这里简单合并并去重）
-        combined = { (s['module_id'], s['database']): s for s in candidate_strategies }
-        for sug in llm_suggestions:
-            combined[(sug['module_id'], sug['database'])] = sug
+    def generate_strategies(self, intent: str, parameters: Dict[str, Any]) -> List[Strategy]:
+        """
+        根据意图和参数遍历模块和数据库，生成符合条件的策略列表
+        """
+        strategies = []
+        for module in self.modules:
+            if not self._module_supports_intent(module, intent):
+                continue
+            for db in self.databases:
+                if not self._is_db_suitable(db, module):
+                    continue
+                # 合并参数或动态生成模块参数（这里简化为传入参数）
+                strategy = Strategy(module_instance=module(), parameters=parameters, db_info=db)
+                strategies.append(strategy)
+        logger.info(f"生成策略数量: {len(strategies)}")
+        return strategies
 
-        final_strategies = list(combined.values())
-
-        print(f"[Walker] 合并后策略数: {len(final_strategies)}")
-        return final_strategies
-
-
-# 示例模块实现
-class TrendAnalysisModule(BaseModule):
-    module_id = "trend_analysis"
-    supported_intents = ["trend", "sales_trend"]
-    supported_databases = ["db_sales", "db_all"]
-
-    def execute(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
-        return {"result": "趋势分析结果"}
-
-class PenetrationAnalysisModule(BaseModule):
-    module_id = "penetration_analysis"
-    supported_intents = ["penetration", "market_share"]
-    supported_databases = ["db_market"]
-
-    def execute(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
-        return {"result": "渗透率分析结果"}
+    def execute_strategies(self, strategies: List[Strategy]) -> List[Dict[str, Any]]:
+        """
+        执行所有策略，收集返回结果
+        """
+        results = []
+        for strategy in strategies:
+            try:
+                res = strategy.execute()
+                results.append(res)
+            except Exception as e:
+                logger.error(f"策略执行失败: {e}")
+        return results
 
 
-# 使用示例
+# 示例：初始化 Walker
+
 if __name__ == "__main__":
-    modules = [TrendAnalysisModule(), PenetrationAnalysisModule()]
-    llm = LLMWrapper()
-    walker = Walker(modules, llm)
+    # 这里手动实例化模块列表，实际应动态加载或注册
+    modules = [trend_analysis.TrendAnalysis, yoy_comparison.YOYComparison]
 
-    intent = "penetration"
-    context = {
-        "available_databases": ["db_sales", "db_market", "db_customer"],
-        "user_history": [],
+    # 示例数据库列表
+    databases = [
+        {"name": "本地DuckDB", "type": "duckdb", "connection_str": "data/cars.duckdb"},
+        {"name": "远程Postgres", "type": "postgres", "connection_str": "postgres://..."},
+    ]
+
+    walker = Walker(modules, databases)
+    intent = "trend_analysis"
+    parameters = {
+        "metric": "sales_volume",
+        "brand": "比亚迪",
+        "time_range": "2023",
     }
 
-    strategies = walker.generate_strategy(intent, context)
-    print("最终策略列表:")
-    for s in strategies:
-        print(s)
+    strategies = walker.generate_strategies(intent, parameters)
+    results = walker.execute_strategies(strategies)
+
+    for i, r in enumerate(results):
+        print(f"策略结果{i+1}:", r)
 ```
 
 ---
 
-### 代码说明
+### 说明
 
-- `BaseModule` 定义模块的基本接口和能力描述（支持哪些意图、数据库）。
-- `LLMWrapper` 模拟 LLM 调用，基于意图和上下文动态生成策略建议。
-- `Walker` 先用规则筛选可用策略，再融合 LLM 的建议，合并生成最终策略列表。
-- 这样既保证了规则的可控性，又利用 LLM 的智能性提升策略丰富度和灵活度。
+- `Walker` 负责根据意图过滤模块，结合数据库信息生成策略单元
+- 每个 `Strategy` 包含模块实例、参数和数据库上下文
+- 通过 `execute()` 统一调用模块的执行接口
+- 方便扩展更多意图判定和数据库筛选逻辑
+- 真实项目中模块支持意图和数据库要求等应通过接口或配置动态提供
 
 ---
 
-如果你希望，我可以帮你设计更复杂的策略生成和执行调度架构。需要吗？
+如果你需要，我可以帮你写个更具体版本，或帮你设计 walker 与意图解析、模块执行、结果汇总的交互接口。需要告诉我！

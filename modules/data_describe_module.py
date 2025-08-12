@@ -33,12 +33,91 @@ class DataDescribeModule(BaseAnalysisModule):
     # 数据库感知能力
     supported_databases = ["csv", "parquet", "duckdb", "sqlite"]
     required_fields = []  # 不要求特定字段，可以分析任何数据
-    optional_fields = []  # 所有字段都是可选的
+    optional_fields = []  # 所有字段都是可选的，会动态检测
     
     def __init__(self):
         """初始化模块"""
         super().__init__()
         self.analyzer = None
+        self._detected_fields = []  # 动态检测到的字段
+    
+    def check_database_compatibility(self, database_type: str, available_fields: List[str]) -> Dict[str, Any]:
+        """检查与指定数据库的兼容性
+        
+        重写基类方法，支持动态字段检测
+        
+        Args:
+            database_type: 数据库类型
+            available_fields: 数据库中可用的字段列表
+            
+        Returns:
+            Dict[str, Any]: 兼容性检查结果
+        """
+        # 检查数据库类型支持
+        if self.supported_databases and database_type not in self.supported_databases:
+            return {
+                "compatible": False,
+                "missing_fields": [],
+                "available_fields": available_fields,
+                "score": 0.0,
+                "reason": f"不支持数据库类型: {database_type}"
+            }
+        
+        # 数据描述模块不要求特定字段，任何字段都可以分析
+        # 动态更新检测到的字段
+        self._detected_fields = available_fields
+        
+        # 计算兼容性评分
+        # 基于可用字段数量给分
+        if available_fields:
+            # 有字段就兼容，字段越多分数越高
+            base_score = 0.8  # 基础分
+            field_bonus = min(0.2, len(available_fields) * 0.01)  # 字段数量奖励
+            score = base_score + field_bonus
+        else:
+            score = 0.5  # 即使没有字段信息也可以尝试分析
+        
+        return {
+            "compatible": True,
+            "missing_fields": [],
+            "available_fields": available_fields,
+            "detected_fields": self._detected_fields,
+            "score": min(score, 1.0),
+            "reason": f"可分析 {len(available_fields)} 个字段的数据"
+        }
+    
+    def get_detected_fields(self) -> List[str]:
+        """获取动态检测到的字段列表
+        
+        Returns:
+            List[str]: 检测到的字段列表
+        """
+        return self._detected_fields.copy()
+    
+    def get_module_info(self) -> Dict[str, Any]:
+        """获取模块信息
+        
+        重写基类方法，包含动态检测的字段信息
+        
+        Returns:
+            Dict[str, Any]: 模块信息
+        """
+        base_info = super().get_module_info()
+        
+        # 添加动态字段信息
+        base_info.update({
+            "detected_fields": self._detected_fields,
+            "field_detection": "dynamic",
+            "supports_any_fields": True,
+            "field_analysis_capabilities": {
+                "field_types": ["numeric", "text", "datetime"],
+                "field_statistics": ["count", "null_count", "unique_count", "data_type"],
+                "missing_value_analysis": True,
+                "data_type_detection": True
+            }
+        })
+        
+        return base_info
     
     def prepare_data(self, db_connector: Any, params: Dict[str, Any]) -> Any:
         """根据数据库连接器和参数准备数据
@@ -55,8 +134,8 @@ class DataDescribeModule(BaseAnalysisModule):
         if not data_source:
             raise ValueError("缺少必需参数: data_source")
         
-        # 如果是文件路径
-        if isinstance(data_source, str) and ('/' in data_source or '\\' in data_source or data_source.endswith(('.csv', '.parquet', '.duckdb', '.db'))):
+        # 如果是文件路径或目录路径
+        if isinstance(data_source, str):
             file_path = Path(data_source)
             if not file_path.is_absolute():
                 # 相对路径，从项目根目录开始
@@ -64,32 +143,65 @@ class DataDescribeModule(BaseAnalysisModule):
                 file_path = project_root / data_source
             
             if not file_path.exists():
-                raise FileNotFoundError(f"数据文件不存在: {file_path}")
+                raise FileNotFoundError(f"数据源不存在: {file_path}")
             
-            # 根据文件类型读取数据
-            if file_path.suffix.lower() == '.csv':
-                self.analyzer = DataAnalyzer()
-                df = self.analyzer.read_csv_file(file_path)
-                if df is None:
-                    raise ValueError(f"无法读取CSV文件: {file_path}")
-                return {'type': 'dataframe', 'data': df, 'name': file_path.name}
+            # 如果是目录，分析目录中的所有数据文件
+            if file_path.is_dir():
+                self.analyzer = DataAnalyzer(str(file_path))
+                data_files = self.analyzer.get_data_files()
+                if not data_files:
+                    raise ValueError(f"目录中没有找到支持的数据文件: {file_path}")
+                
+                # 读取所有数据文件
+                all_data = {}
+                for data_file in data_files:
+                    if data_file.suffix.lower() == '.csv':
+                        df = self.analyzer.read_csv_file(data_file)
+                        if df is not None:
+                            all_data[data_file.name] = df
+                    elif data_file.suffix.lower() == '.parquet':
+                        df = self.analyzer.read_parquet_file(data_file)
+                        if df is not None:
+                            all_data[data_file.name] = df
+                    elif data_file.suffix.lower() in ['.duckdb', '.db']:
+                        tables_data = self.analyzer.read_duckdb_file(data_file)
+                        for table_name, df in tables_data.items():
+                            all_data[f"{data_file.name}.{table_name}"] = df
+                
+                if not all_data:
+                    raise ValueError(f"无法读取目录中的任何数据文件: {file_path}")
+                
+                return {'type': 'tables', 'data': all_data, 'name': file_path.name}
             
-            elif file_path.suffix.lower() == '.parquet':
-                self.analyzer = DataAnalyzer()
-                df = self.analyzer.read_parquet_file(file_path)
-                if df is None:
-                    raise ValueError(f"无法读取Parquet文件: {file_path}")
-                return {'type': 'dataframe', 'data': df, 'name': file_path.name}
-            
-            elif file_path.suffix.lower() in ['.duckdb', '.db']:
-                self.analyzer = DataAnalyzer()
-                tables_data = self.analyzer.read_duckdb_file(file_path)
-                if not tables_data:
-                    raise ValueError(f"无法读取DuckDB文件或文件为空: {file_path}")
-                return {'type': 'tables', 'data': tables_data, 'name': file_path.name}
+            # 如果是文件，按原逻辑处理
+            elif file_path.is_file():
+                # 根据文件类型读取数据
+                if file_path.suffix.lower() == '.csv':
+                    self.analyzer = DataAnalyzer()
+                    df = self.analyzer.read_csv_file(file_path)
+                    if df is None:
+                        raise ValueError(f"无法读取CSV文件: {file_path}")
+                    return {'type': 'dataframe', 'data': df, 'name': file_path.name}
+                
+                elif file_path.suffix.lower() == '.parquet':
+                    self.analyzer = DataAnalyzer()
+                    df = self.analyzer.read_parquet_file(file_path)
+                    if df is None:
+                        raise ValueError(f"无法读取Parquet文件: {file_path}")
+                    return {'type': 'dataframe', 'data': df, 'name': file_path.name}
+                
+                elif file_path.suffix.lower() in ['.duckdb', '.db']:
+                    self.analyzer = DataAnalyzer()
+                    tables_data = self.analyzer.read_duckdb_file(file_path)
+                    if not tables_data:
+                        raise ValueError(f"无法读取DuckDB文件或文件为空: {file_path}")
+                    return {'type': 'tables', 'data': tables_data, 'name': file_path.name}
+                
+                else:
+                    raise ValueError(f"不支持的文件格式: {file_path.suffix}")
             
             else:
-                raise ValueError(f"不支持的文件格式: {file_path.suffix}")
+                raise ValueError(f"数据源既不是文件也不是目录: {file_path}")
         
         # 如果是数据库表名且有连接器
         elif db_connector:
@@ -126,8 +238,16 @@ class DataDescribeModule(BaseAnalysisModule):
             'data': [],
             'analysis': {},
             'visualization': {},
-            'insights': []
+            'insights': [],
+            'field_info': {},
+            'available_fields': []
         }
+        
+        # 获取字段信息
+        field_info = self.get_field_info(data)
+        available_fields = self.get_available_fields(data)
+        results['field_info'] = field_info
+        results['available_fields'] = available_fields
         
         if data['type'] == 'dataframe':
             # 单个DataFrame分析
@@ -168,6 +288,103 @@ class DataDescribeModule(BaseAnalysisModule):
         
         return results
     
+    def get_available_fields(self, data: Any) -> List[str]:
+        """获取数据中可用的字段列表
+        
+        Args:
+            data: 准备好的数据对象
+            
+        Returns:
+            List[str]: 可用字段列表
+        """
+        fields = []
+        
+        if data['type'] == 'dataframe':
+            # 单个DataFrame的字段
+            df = data['data']
+            fields = list(df.columns)
+        elif data['type'] == 'tables':
+            # 多个表的字段，合并所有唯一字段
+            all_fields = set()
+            for table_name, df in data['data'].items():
+                all_fields.update(df.columns)
+            fields = list(all_fields)
+        
+        return fields
+    
+    def get_field_info(self, data: Any) -> Dict[str, Any]:
+        """获取详细的字段信息
+        
+        Args:
+            data: 准备好的数据对象
+            
+        Returns:
+            Dict[str, Any]: 字段信息字典
+        """
+        field_info = {
+            'total_fields': 0,
+            'field_details': {},
+            'field_types': {},
+            'numeric_fields': [],
+            'text_fields': [],
+            'datetime_fields': []
+        }
+        
+        if data['type'] == 'dataframe':
+            df = data['data']
+            field_info['total_fields'] = len(df.columns)
+            
+            for col in df.columns:
+                dtype = str(df[col].dtype)
+                field_info['field_details'][col] = {
+                    'type': dtype,
+                    'non_null_count': df[col].count(),
+                    'null_count': df[col].isnull().sum(),
+                    'unique_count': df[col].nunique()
+                }
+                field_info['field_types'][col] = dtype
+                
+                # 分类字段类型
+                if 'int' in dtype or 'float' in dtype:
+                    field_info['numeric_fields'].append(col)
+                elif 'datetime' in dtype:
+                    field_info['datetime_fields'].append(col)
+                else:
+                    field_info['text_fields'].append(col)
+        
+        elif data['type'] == 'tables':
+            all_fields = {}
+            for table_name, df in data['data'].items():
+                for col in df.columns:
+                    if col not in all_fields:
+                        dtype = str(df[col].dtype)
+                        all_fields[col] = {
+                            'type': dtype,
+                            'tables': [table_name],
+                            'non_null_count': df[col].count(),
+                            'null_count': df[col].isnull().sum(),
+                            'unique_count': df[col].nunique()
+                        }
+                        
+                        # 分类字段类型
+                        if 'int' in dtype or 'float' in dtype:
+                            if col not in field_info['numeric_fields']:
+                                field_info['numeric_fields'].append(col)
+                        elif 'datetime' in dtype:
+                            if col not in field_info['datetime_fields']:
+                                field_info['datetime_fields'].append(col)
+                        else:
+                            if col not in field_info['text_fields']:
+                                field_info['text_fields'].append(col)
+                    else:
+                        all_fields[col]['tables'].append(table_name)
+            
+            field_info['total_fields'] = len(all_fields)
+            field_info['field_details'] = all_fields
+            field_info['field_types'] = {k: v['type'] for k, v in all_fields.items()}
+        
+        return field_info
+    
     def summarize(self, results: Dict[str, Any]) -> str:
         """生成分析结果的文字解读
         
@@ -179,6 +396,7 @@ class DataDescribeModule(BaseAnalysisModule):
         """
         analysis = results.get('analysis', {})
         insights = results.get('insights', [])
+        field_info = results.get('field_info', {})
         
         if 'total_tables' in analysis:
             # 多表分析总结
@@ -192,6 +410,24 @@ class DataDescribeModule(BaseAnalysisModule):
                         f"表 {table_desc['数据集名称']}: {table_desc['行数']} 行 × {table_desc['列数']} 列，"
                         f"内存使用 {table_desc['内存使用']}。"
                     )
+            
+            # 添加字段信息
+            if field_info:
+                summary_parts.append(
+                    f"共发现 {field_info.get('total_fields', 0)} 个不同字段："
+                    f"{len(field_info.get('numeric_fields', []))} 个数值字段、"
+                    f"{len(field_info.get('text_fields', []))} 个文本字段、"
+                    f"{len(field_info.get('datetime_fields', []))} 个日期时间字段。"
+                )
+                
+                # 列出主要字段名称
+                if field_info.get('numeric_fields'):
+                    numeric_sample = field_info['numeric_fields'][:5]
+                    summary_parts.append(f"主要数值字段: {', '.join(numeric_sample)}{'等' if len(field_info['numeric_fields']) > 5 else ''}。")
+                
+                if field_info.get('text_fields'):
+                    text_sample = field_info['text_fields'][:5]
+                    summary_parts.append(f"主要文本字段: {', '.join(text_sample)}{'等' if len(field_info['text_fields']) > 5 else ''}。")
         else:
             # 单表分析总结
             if 'error' in analysis:
@@ -201,6 +437,11 @@ class DataDescribeModule(BaseAnalysisModule):
                 f"数据集 {analysis['数据集名称']} 包含 {analysis['行数']} 行和 {analysis['列数']} 列。",
                 f"内存使用: {analysis['内存使用']}。"
             ]
+            
+            # 添加字段详细信息
+            if '列名' in analysis:
+                column_names = analysis['列名']
+                summary_parts.append(f"字段列表: {', '.join(column_names[:10])}{'等' if len(column_names) > 10 else ''}。")
             
             # 添加数据类型信息
             if '数据类型' in analysis:

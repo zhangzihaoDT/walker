@@ -49,7 +49,7 @@ def test_module_executor_integration():
     print("\n=== 测试ModuleExecutor集成 ===")
     
     try:
-        from core.module_executor import get_module_executor
+        from agents.module_executor import get_module_executor
         from core.walker import get_walker
         
         executor = get_module_executor()
