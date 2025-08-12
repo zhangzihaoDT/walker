@@ -92,3 +92,71 @@ flowchart TD
     U2 -- 是 --> M
     U2 -- 否 --> End[结束分析会话]
 ```
+
+好的，我给你画一个 **多数据库 + 模块分离** 架构的对比图，让你看到“原来的设计”和“分离后的设计”在 Walker 模式下的区别。
+
+---
+
+```mermaid
+flowchart TB
+    subgraph A1[原有架构：模块与数据源耦合]
+        DB1[(数据库1)]
+        DB2[(数据库2)]
+        DB1 --> M1[trend_analysis_DB1]
+        DB2 --> M2[trend_analysis_DB2]
+        DB1 --> M3[yoy_comparison_DB1]
+        DB2 --> M4[yoy_comparison_DB2]
+        style M1 fill:#ffdede
+        style M2 fill:#ffdede
+        style M3 fill:#ffdede
+        style M4 fill:#ffdede
+    end
+
+    subgraph A2[优化架构：数据访问层与分析层分离]
+        DB1_opt[(数据库1)]
+        DB2_opt[(数据库2)]
+        subgraph DataLayer[数据访问层]
+            DR[data_router.py]
+        end
+        subgraph AnalysisLayer[分析模块层]
+            T[trend.py<br>趋势分析]
+            Y[yoy_comparison.py<br>同比分析]
+            S[segmentation.py<br>动态分段]
+        end
+        DB1_opt --> DR
+        DB2_opt --> DR
+        DR --> T
+        DR --> Y
+        DR --> S
+        style T fill:#deffde
+        style Y fill:#deffde
+        style S fill:#deffde
+    end
+
+    A1 -->|Walker 无法去重，模块成倍增加| A2
+    A2 -->|Walker 只组合分析策略单元，数据源由 DataLayer 统一管理| A2
+```
+
+---
+
+### 📌 图里的重点区别
+
+| 特性                | 原有架构（耦合）            | 分离架构（Walker 友好） |
+| ------------------- | --------------------------- | ----------------------- |
+| **模块数量**        | 数据源 × 分析逻辑，成倍增加 | 分析逻辑固定数量        |
+| **代码重复**        | 高                          | 低（仅数据访问层差异）  |
+| **数据源切换**      | 需要复制并改多个模块        | 只改 DataLayer          |
+| **Walker 扩展分析** | 需要关心数据库细节          | 只关心策略单元组合      |
+
+---
+
+这样分离之后，Walker 看到的只是**趋势分析**、**同比分析**、**动态分段**等纯分析单元，
+它可以组合这些策略去尝试自动分析，不会因为数据源多而把模块列表“放大好几倍”。
+
+---
+
+我建议你下一步就是先做这个 **DataLayer + AnalysisLayer** 分离，
+这样无论模块匹配还是 Walker 自动探索都不会受数据库数量影响。
+
+我还可以帮你画一个 **“Walker 自动组合策略”** 的数据流图，
+让你看清楚多数据库环境下它是怎么调度的，要画吗？这样你就能直接用作架构升级参考。

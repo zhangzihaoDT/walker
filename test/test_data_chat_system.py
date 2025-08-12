@@ -15,7 +15,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from llm.glm import GLMClient
-from core.workflow import DataChatWorkflow
+from core.router import DataChatWorkflow
 from modules.run_data_describe import DataAnalyzer
 
 logging.basicConfig(level=logging.INFO)
@@ -90,7 +90,7 @@ class TestDataChatSystem(unittest.TestCase):
         except Exception as e:
             self.fail(f"GLM客户端测试失败: {e}")
     
-    @patch('core.workflow.get_glm_client')
+    @patch('core.graph_builder.get_glm_client')
     def test_workflow_intent_recognition(self, mock_get_glm):
         """测试工作流意图识别"""
         print("\n🧪 测试工作流意图识别...")
@@ -120,7 +120,7 @@ class TestDataChatSystem(unittest.TestCase):
         except Exception as e:
             self.fail(f"工作流意图识别测试失败: {e}")
     
-    @patch('core.workflow.get_glm_client')
+    @patch('core.graph_builder.get_glm_client')
     def test_workflow_complete_process(self, mock_get_glm):
         """测试完整工作流程"""
         print("\n🧪 测试完整工作流程...")

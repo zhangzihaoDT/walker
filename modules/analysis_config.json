@@ -1,0 +1,44 @@
+{
+  "modules": [
+    {
+      "module_id": "data_describe",
+      "module_name": "数据描述分析模块",
+      "description": "对数据进行基本的描述性统计分析，包括数据形状、类型、缺失值、统计摘要等",
+      "class_name": "DataDescribeModule",
+      "file_path": "modules/data_describe_module.py",
+      "supported_databases": ["csv", "parquet", "duckdb", "sqlite"],
+      "required_fields": [],
+      "optional_fields": [],
+      "parameter_requirements": [
+        {
+          "name": "data_source",
+          "type": "string",
+          "required": true,
+          "description": "数据源路径或表名",
+          "default_value": null,
+          "example": "data/sample.csv"
+        },
+        {
+          "name": "include_visualization",
+          "type": "boolean",
+          "required": false,
+          "description": "是否包含可视化配置",
+          "default_value": true,
+          "example": true
+        }
+      ],
+      "capabilities": [
+        "数据形状分析",
+        "数据类型检测",
+        "缺失值统计",
+        "描述性统计",
+        "内存使用分析"
+      ]
+    }
+  ],
+  "metadata": {
+    "version": "1.0.0",
+    "last_updated": "2024-01-01",
+    "total_modules": 1
+  }
+}

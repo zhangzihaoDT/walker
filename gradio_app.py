@@ -43,7 +43,7 @@ else:
     LANGSMITH_ENABLED = False
     print("ℹ️ LangSmith监控未启用")
 
-from core.workflow import get_workflow
+from core.router import get_workflow
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
