@@ -74,17 +74,23 @@ class DataChatApp:
             return "", history
         
         try:
+            # 检查是否是后续分析请求
+            user_feedback = ""
+            if hasattr(self, 'last_result') and self.last_result and "继续" in message:
+                user_feedback = message
+                message = self.last_result.get("user_question", message)
+            
             # 使用LangSmith监控（如果启用）
             if LANGSMITH_ENABLED:
                 try:
                     # 创建trace记录
                     trace_data = {
                         "name": "data_chat_interaction",
-                        "inputs": {"user_message": message},
+                        "inputs": {"user_message": message, "user_feedback": user_feedback},
                         "project_name": "W33_DataChat_Assistant"
                     }
                     
-                    result = self.workflow.process_user_question(message)
+                    result = self.workflow.process_user_question(message, user_feedback)
                     
                     # 记录输出和元数据
                     trace_data["outputs"] = {"response": result["final_response"]}
@@ -99,11 +105,25 @@ class DataChatApp:
                     
                 except Exception as langsmith_error:
                     logger.warning(f"LangSmith监控失败: {langsmith_error}")
-                    result = self.workflow.process_user_question(message)
+                    result = self.workflow.process_user_question(message, user_feedback)
             else:
-                result = self.workflow.process_user_question(message)
+                result = self.workflow.process_user_question(message, user_feedback)
+            
+            # 保存结果用于后续分析
+            self.last_result = result
             
             response = result["final_response"]
+            
+            # 如果有后续建议，添加到响应中
+            follow_up_suggestions = result.get("summary", {}).get("follow_up_suggestions", [])
+            if follow_up_suggestions:
+                response += "\n\n**💡 分析建议：**\n"
+                for i, suggestion in enumerate(follow_up_suggestions[:3], 1):
+                    if suggestion.get("trigger_analysis", False):
+                        response += f"{i}. **{suggestion['title']}**: {suggestion['description']}\n"
+                        response += f"   *点击发送：继续{suggestion['action']}*\n\n"
+                    else:
+                        response += f"{i}. **{suggestion['title']}**: {suggestion['description']}\n\n"
             
             # 更新聊天历史
             history.append([message, response])

@@ -29,12 +29,13 @@ class DataChatRouter:
         self.workflow_graph = self.graph_builder.build_graph()
         logger.info("数据聊天路由器初始化成功")
     
-    def create_initial_state(self, user_question: str) -> WorkflowState:
+    def create_initial_state(self, user_question: str, user_feedback: str = "") -> WorkflowState:
         """
         创建初始状态上下文
         
         Args:
             user_question: 用户问题
+            user_feedback: 用户反馈（用于循环分析）
             
         Returns:
             初始化的工作流状态
@@ -45,10 +46,19 @@ class DataChatRouter:
             analysis_result="",
             analysis_success=False,
             final_response="",
-            error_message=""
+            error_message="",
+            # Walker策略相关字段
+            walker_strategy={},
+            execution_plan=[],
+            execution_results=[],
+            # 总结和反馈相关字段
+            summary_result={},
+            follow_up_questions=[],
+            user_feedback=user_feedback,
+            continue_analysis=False
         )
     
-    def execute_with_langgraph(self, user_question: str) -> Dict[str, Any]:
+    def execute_with_langgraph(self, user_question: str, user_feedback: str = "") -> Dict[str, Any]:
         """
         使用 LangGraph 执行工作流
         
@@ -63,7 +73,7 @@ class DataChatRouter:
                 raise Exception("工作流图未初始化，可能缺少 LangGraph 依赖")
             
             # 创建初始状态
-            initial_state = self.create_initial_state(user_question)
+            initial_state = self.create_initial_state(user_question, user_feedback)
             
             # 执行工作流
             logger.info(f"开始执行 LangGraph 工作流: {user_question}")
@@ -79,6 +89,15 @@ class DataChatRouter:
                     "result": final_state.get("analysis_result") if final_state.get("analysis_success") else None,
                     "error": final_state.get("error_message") if not final_state.get("analysis_success") else None
                 },
+                "walker_strategy": {
+                    "used": bool(final_state.get("walker_strategy")),
+                    "strategy": final_state.get("walker_strategy", {}),
+                    "execution_plan": final_state.get("execution_plan", []),
+                    "execution_results": final_state.get("execution_results", [])
+                },
+                "summary": final_state.get("summary_result", {}),
+                "follow_up_questions": final_state.get("follow_up_questions", []),
+                "continue_analysis": final_state.get("continue_analysis", False),
                 "final_response": final_state.get("final_response", ""),
                 "timestamp": str(Path(__file__).stat().st_mtime),
                 "execution_mode": "langgraph"
@@ -169,7 +188,7 @@ class DataChatRouter:
                 "error": str(e)
             }
     
-    def process_user_question(self, user_question: str) -> Dict[str, Any]:
+    def process_user_question(self, user_question: str, user_feedback: str = "") -> Dict[str, Any]:
         """
         处理用户问题的完整流程 - 主入口方法
         
@@ -184,7 +203,7 @@ class DataChatRouter:
         try:
             # 优先尝试使用 LangGraph
             if self.workflow_graph is not None:
-                return self.execute_with_langgraph(user_question)
+                return self.execute_with_langgraph(user_question, user_feedback)
             else:
                 logger.warning("LangGraph 不可用，使用降级模式")
                 return self.execute_fallback(user_question)
@@ -210,6 +229,50 @@ class DataChatRouter:
                     "execution_mode": "critical_error",
                     "error": f"Critical failure: {str(e)}, {str(fallback_error)}"
                 }
+    
+    def continue_walker_analysis(self, previous_result: Dict[str, Any], user_feedback: str) -> Dict[str, Any]:
+        """
+        继续Walker策略分析 - 支持用户反馈循环
+        
+        Args:
+            previous_result: 上一轮分析结果
+            user_feedback: 用户反馈
+            
+        Returns:
+            新一轮分析结果
+        """
+        try:
+            # 从上一轮结果中提取用户问题
+            original_question = previous_result.get("user_question", "")
+            
+            # 构建增强的用户问题，包含反馈信息
+            enhanced_question = f"{original_question}\n\n用户反馈：{user_feedback}"
+            
+            logger.info(f"基于用户反馈继续Walker分析: {user_feedback}")
+            
+            # 执行新一轮分析
+            return self.process_user_question(enhanced_question, user_feedback)
+            
+        except Exception as e:
+            logger.error(f"继续Walker分析失败: {e}")
+            return {
+                "user_question": previous_result.get("user_question", ""),
+                "intent": {"intent": "error", "confidence": 0.0},
+                "data_analysis": {
+                    "executed": False,
+                    "success": False,
+                    "result": None,
+                    "error": f"继续分析失败: {str(e)}"
+                },
+                "walker_strategy": {"used": False, "strategy": {}, "execution_plan": [], "execution_results": []},
+                "summary": {},
+                "follow_up_questions": [],
+                "continue_analysis": False,
+                "final_response": f"抱歉，继续分析时出现错误：{str(e)}",
+                "timestamp": str(Path(__file__).stat().st_mtime),
+                "execution_mode": "error",
+                "error": str(e)
+            }
 
 # 全局路由器实例
 _router = None
@@ -244,9 +307,9 @@ class DataChatWorkflow:
     def __init__(self):
         self.router = get_router()
     
-    def process_user_question(self, user_question: str) -> Dict[str, Any]:
+    def process_user_question(self, user_question: str, user_feedback: str = "") -> Dict[str, Any]:
         """向后兼容的处理方法"""
-        return self.router.process_user_question(user_question)
+        return self.router.process_user_question(user_question, user_feedback)
     
     def recognize_intent(self, user_question: str) -> Dict[str, Any]:
         """向后兼容的意图识别方法"""

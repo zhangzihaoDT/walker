@@ -163,6 +163,25 @@ class BaseAnalysisModule(ABC):
         """
         return getattr(self, 'parameter_requirements', [])
     
+    @abstractmethod
+    def get_requirements(self) -> Dict[str, Any]:
+        """声明所需数据字段和参数（Walker流程标准接口）
+        
+        这是为Walker策略流程设计的标准接口，用于声明模块的数据和参数需求。
+        不管模块是做分析还是做切片，都能保证在Walker流程里稳定运行。
+        
+        Returns:
+            Dict[str, Any]: 需求声明
+            {
+                "data_fields": List[str],     # 必需的数据字段
+                "optional_fields": List[str], # 可选的数据字段
+                "parameters": List[dict],     # 参数要求
+                "databases": List[str],       # 支持的数据库类型
+                "module_type": str            # 模块类型（如：segmenter, analyzer, comparator）
+            }
+        """
+        raise NotImplementedError("子类必须实现get_requirements方法")
+    
     def check_database_compatibility(self, database_type: str, available_fields: List[str]) -> Dict[str, Any]:
         """检查与指定数据库的兼容性
         

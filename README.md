@@ -160,3 +160,200 @@ flowchart TB
 
 我还可以帮你画一个 **“Walker 自动组合策略”** 的数据流图，
 让你看清楚多数据库环境下它是怎么调度的，要画吗？这样你就能直接用作架构升级参考。
+
+## walker 策略架构
+
+对，你这个理解是很合理的。
+
+如果把 **参数细分器** 当作一个独立的分析模块（而不是 Walker 内部的硬编码逻辑），有几个好处：
+
+---
+
+### 1. **模块解耦**
+
+- 参数细分（时间 × 品类 × 价格段等）不嵌进 Walker 核心逻辑，而是以一个普通的模块形式注册到 `modules/`。
+- 这样 Walker 在执行时，只是“把它放进策略链路”，不关心它内部是做参数生成还是做计算。
+- 好处：
+
+  - Walker 更通用，只负责策略安排。
+  - 参数细分器可以单独测试、升级、替换。
+
+---
+
+### 2. **同层级运行**
+
+- 例如：
+
+  ```
+  Strategy = [trend_analysis, param_segmenter, yoy_comparison]
+  ```
+
+  - `trend_analysis` 先跑趋势
+  - `param_segmenter` 输出子问题（按季度、价格段拆分）
+  - `yoy_comparison` 针对子问题做同比
+
+- 这就等于 Walker 在“模块序列”里夹了一个细分器，让它去丰富后续模块的输入。
+
+---
+
+### 3. **Summary 更丰富**
+
+- 因为参数细分器的输出是“多个变体数据集”，后续模块在不同切片上跑，得到的结果粒度更细。
+- Summary Agent 就能拼接出一个更有洞察力的整体结论（类似 BI 工具里的 Drill-down）。
+
+---
+
+### 4. **Walker + 模块化设计的好处**
+
+- Walker 不变，扩展能力靠加模块。
+- “细分器”只是 Walker 能调度的众多模块之一。
+- 未来还可以有：
+
+  - 数据清洗模块
+  - 异常检测模块
+  - 预测模块
+  - 信号聚合模块
+
+- 这些都是“策略单元”，Walker 只是挑选和组合。
+
+---
+
+如果你愿意，我可以帮你画一个 **Walker 执行两种模块的流程图**（分析模块 + 参数细分模块），能清楚展示你说的“同层级”运行方式。
+这样你就可以在 devlog 里解释给团队看，避免他们把参数细分硬绑进 Walker 里。
+
+你要我画吗？
+
+好的，这是你说的 **“参数细分模块与分析模块同层级运行”** 的 Walker 策略流程图：
+
+```mermaid
+flowchart TD
+    subgraph Input["用户输入 & 初始上下文"]
+        Q[问题: 比亚迪2024年销量表现]
+        D[当前数据字段]
+    end
+
+    Q --> W[Walker策略生成]
+    D --> W
+
+    subgraph Walker["Strategy Walker"]
+        W --> S1[选择可用模块: trend_analysis, param_segmenter, yoy_comparison]
+        S1 --> S2[生成策略链: trend_analysis → param_segmenter → yoy_comparison]
+    end
+
+    subgraph Execution["模块执行流程"]
+        S2 --> M1[trend_analysis 执行]
+        M1 --> M2[param_segmenter 执行 - 按季度 × 价格段拆分]
+        M2 --> M3[yoy_comparison 针对每个子集执行]
+    end
+
+    M3 --> Agg[聚合所有结果]
+    Agg --> SA[Summary Agent 综合解读]
+    SA --> UF[生成可追问的 follow-up 建议]
+    UF --> Out[最终响应]
+```
+
+---
+
+### 关键设计点
+
+1. **param_segmenter** 只是一个 Walker 可调度的普通模块，和 trend_analysis、yoy_comparison 平级。
+2. **Walker 策略链** 里可以把它放在任何位置（甚至多个位置），完全由策略引擎决定。
+3. **Execution 阶段** 里，param_segmenter 的输出直接成为后续模块的输入，而不是回到 Walker 再重新调度。
+4. **Summary Agent** 负责把多粒度结果合并成一个有洞察的结论，并生成后续分析建议。
+
+---
+
+我建议你在 **base_module.py** 里也为这种“细分器”定义标准接口，比如：
+
+```python
+class BaseAnalysisModule(ABC):
+    module_id: str
+    module_name: str
+    description: str
+
+    @abstractmethod
+    def run(self, data, **params) -> dict:
+        """执行分析，返回结构化结果"""
+
+    @abstractmethod
+    def get_requirements(self) -> dict:
+        """声明所需数据字段和参数"""
+```
+
+这样不管它是做分析还是做切片，都能保证在 Walker 流程里稳定运行。
+
+---
+
+我可以帮你再画一个 **Walker 策略 + 多数据库选择 + 参数细分器** 的版本，这样你的团队就能直接对接未来扩展。
+你要做吗？这样就一步到位。
+
+明白！我帮你设计一个结合 Walker 策略、多数据库选择、参数细分模块的全流程示意图，展示整个智能分析执行路径：
+
+```mermaid
+flowchart TD
+    %% 用户输入与初始数据
+    subgraph Input["用户输入 & 初始上下文"]
+        Q[用户输入问题]
+        F[已有字段 & 维度信息]
+    end
+
+    Q --> IR[意图识别 Agent]
+    F --> IR
+
+    %% 意图识别结果供 Walker 使用
+    IR --> Walker[Strategy Walker]
+
+    %% 多数据库上下文
+    DBInfo[数据库信息集合]
+    Walker --> DBSelector[数据库选择策略]
+    DBSelector --> SelectedDBs[选择的数据库集合]
+
+    %% Walker 根据意图+模块+数据库选择策略生成分析策略组合
+    SelectedDBs --> StrategyGen[策略生成]
+    Walker --> StrategyGen
+
+    %% 策略生成输出多模块组合策略链
+    StrategyGen --> ModuleExec[模块执行引擎]
+
+    %% 模块执行细节
+    subgraph Modules["分析模块执行"]
+        ModuleExec --> ParamSegmenter[param_segmenter模块（参数细分）]
+        ParamSegmenter --> NextModules[后续分析模块（如趋势分析、同比分析）]
+        NextModules --> Results[多个模块分析结果]
+    end
+
+    %% 结果聚合与洞察生成
+    Results --> SummaryAgent[Summary Agent综合解读]
+    SummaryAgent --> FollowUpGen[生成可追问的后续分析建议]
+
+    %% 用户交互反馈循环
+    FollowUpGen --> UserFeedback[用户确认或追问]
+    UserFeedback -->|继续分析| Walker
+    UserFeedback -->|结束| End[结束会话]
+
+    %% 监控与日志（横向）
+    classDef monitor fill:#f9f,stroke:#333,stroke-width:2px;
+    IR:::monitor
+    Walker:::monitor
+    DBSelector:::monitor
+    StrategyGen:::monitor
+    ModuleExec:::monitor
+    SummaryAgent:::monitor
+
+```
+
+---
+
+### 说明
+
+- **意图识别 Agent** 提取用户核心需求。
+- **Strategy Walker** 不仅根据意图和模块，还结合**数据库信息**决定“在哪查数据”。
+- **数据库选择策略** 是 Walker 的一部分，动态决定要用哪些数据源。
+- **参数细分模块**是一个普通模块，执行后输出细分后的数据，供后续模块使用。
+- 多模块可**串联执行**，输出结果统一给 Summary Agent。
+- Summary Agent 负责跨模块结果的综合解读，生成面向用户的总结与后续建议。
+- 用户通过反馈决定是否进入新一轮 Walker 策略分析，形成闭环。
+
+---
+
+如果需要，我也可以帮你写对应的基础骨架代码和模块接口设计，方便落地！你觉得怎么样？

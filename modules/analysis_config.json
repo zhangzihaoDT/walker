@@ -34,11 +34,129 @@
         "描述性统计",
         "内存使用分析"
       ]
+    },
+    {
+      "module_id": "param_segmenter",
+      "module_name": "参数细分器",
+      "description": "按指定维度对数据进行分组切片，为后续分析提供细分数据",
+      "class_name": "ParameterSegmenterModule",
+      "file_path": "modules/param_segmenter.py",
+      "supported_databases": ["duckdb", "sqlite", "csv", "excel"],
+      "required_fields": [],
+      "optional_fields": [],
+      "parameter_requirements": [
+        {
+          "name": "segment_fields",
+          "type": "list",
+          "required": true,
+          "description": "用于分组的字段列表",
+          "default_value": null,
+          "example": ["category", "region"]
+        },
+        {
+          "name": "aggregation_method",
+          "type": "string",
+          "required": false,
+          "description": "聚合方法",
+          "default_value": "none",
+          "example": "sum"
+        }
+      ],
+      "capabilities": [
+        "数据分组切片",
+        "维度细分",
+        "数据聚合",
+        "分组统计"
+      ]
+    },
+    {
+      "module_id": "trend_analysis",
+      "module_name": "趋势分析",
+      "description": "分析时间序列数据的趋势变化，识别趋势方向和强度",
+      "class_name": "TrendAnalysisModule",
+      "file_path": "modules/trend_analysis.py",
+      "supported_databases": ["duckdb", "sqlite", "csv", "excel"],
+      "required_fields": ["date_field", "value_field"],
+      "optional_fields": ["category_field"],
+      "parameter_requirements": [
+        {
+          "name": "date_field",
+          "type": "string",
+          "required": true,
+          "description": "时间字段名",
+          "default_value": null,
+          "example": "date"
+        },
+        {
+          "name": "value_field",
+          "type": "string",
+          "required": true,
+          "description": "数值字段名",
+          "default_value": null,
+          "example": "sales"
+        },
+        {
+          "name": "trend_method",
+          "type": "string",
+          "required": false,
+          "description": "趋势检测方法",
+          "default_value": "linear",
+          "example": "linear"
+        }
+      ],
+      "capabilities": [
+        "趋势方向识别",
+        "趋势强度计算",
+        "拐点检测",
+        "时间序列分析"
+      ]
+    },
+    {
+      "module_id": "yoy_comparison",
+      "module_name": "同比分析",
+      "description": "进行年同比分析，计算同期数据的变化率和增长趋势",
+      "class_name": "YoYComparisonModule",
+      "file_path": "modules/yoy_comparison.py",
+      "supported_databases": ["duckdb", "sqlite", "csv", "excel"],
+      "required_fields": ["date_field", "value_field"],
+      "optional_fields": ["category_field", "region_field"],
+      "parameter_requirements": [
+        {
+          "name": "date_field",
+          "type": "string",
+          "required": true,
+          "description": "时间字段名",
+          "default_value": null,
+          "example": "date"
+        },
+        {
+          "name": "value_field",
+          "type": "string",
+          "required": true,
+          "description": "数值字段名",
+          "default_value": null,
+          "example": "sales"
+        },
+        {
+          "name": "comparison_periods",
+          "type": "integer",
+          "required": false,
+          "description": "比较的年数",
+          "default_value": 1,
+          "example": 1
+        }
+      ],
+      "capabilities": [
+        "同比增长率计算",
+        "时间对比分析",
+        "增长趋势识别",
+        "周期性分析"
+      ]
     }
   ],
   "metadata": {
-    "version": "1.0.0",
-    "last_updated": "2024-01-01",
-    "total_modules": 1
+    "version": "1.1.0",
+    "last_updated": "2024-01-15",
+    "total_modules": 4
   }
 }

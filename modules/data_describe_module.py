@@ -565,3 +565,39 @@ class DataDescribeModule(BaseAnalysisModule):
             })
         
         return viz_config
+    
+    def get_requirements(self) -> Dict[str, Any]:
+        """声明所需数据字段和参数（Walker流程标准接口）
+        
+        Returns:
+            Dict[str, Any]: 需求声明
+        """
+        return {
+            "data_fields": [],  # 不要求特定字段，可以分析任何数据
+            "optional_fields": [],  # 所有字段都是可选的，会动态检测
+            "parameters": [
+                {
+                    "name": "data_source",
+                    "type": "string",
+                    "required": True,
+                    "description": "数据源路径或表名",
+                    "example": "data/sales.csv"
+                },
+                {
+                    "name": "include_visualization",
+                    "type": "boolean",
+                    "required": False,
+                    "description": "是否包含可视化配置",
+                    "default_value": True
+                },
+                {
+                    "name": "detailed_analysis",
+                    "type": "boolean",
+                    "required": False,
+                    "description": "是否进行详细分析",
+                    "default_value": True
+                }
+            ],
+            "databases": self.supported_databases,
+            "module_type": "analyzer"
+        }

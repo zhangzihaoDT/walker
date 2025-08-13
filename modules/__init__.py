@@ -6,6 +6,14 @@ W33 Utils 3 - Modules Package
 """
 
 from .run_data_describe import DataAnalyzer
+from .param_segmenter import ParameterSegmenterModule
+from .trend_analysis import TrendAnalysisModule
+from .yoy_comparison import YoYComparisonModule
 
-__all__ = ['DataAnalyzer']
+__all__ = [
+    'DataAnalyzer',
+    'ParameterSegmenterModule', 
+    'TrendAnalysisModule',
+    'YoYComparisonModule'
+]
 __version__ = '0.1.0'

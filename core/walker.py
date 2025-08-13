@@ -105,6 +105,8 @@ class Walker:
     
     def _auto_register_modules(self):
         """自动注册配置文件中的模块"""
+        logger.info(f"开始自动注册模块，配置文件中有 {len(self.modules_metadata)} 个模块")
+        
         for module_config in self.modules_metadata:
             try:
                 module_id = module_config.get('module_id')
@@ -114,9 +116,13 @@ class Walker:
                         'info': module_config,
                         'instance': None  # 延迟实例化
                     }
-                    logger.info(f"自动注册模块: {module_id}")
+                    logger.info(f"自动注册模块: {module_id} - {module_config.get('module_name', 'Unknown')}")
+                else:
+                    logger.warning(f"模块配置缺少module_id: {module_config}")
             except Exception as e:
                 logger.error(f"自动注册模块失败: {e}")
+        
+        logger.info(f"模块注册完成，共注册了 {len(self.registered_modules)} 个模块")
     
     def _setup_default_databases(self):
         """
@@ -124,11 +130,20 @@ class Walker:
         """
         default_databases = [
             {
-                "name": "local_data",
-                "type": "file_system",
+                "name": "local_csv_data",
+                "type": "csv",
                 "path": "data",
-                "description": "本地数据目录",
-                "supported_formats": ["csv", "parquet", "duckdb"]
+                "description": "本地CSV数据目录",
+                "fields": ["sales_volume", "company", "year", "month", "region"],  # 示例字段
+                "supported_formats": ["csv"]
+            },
+            {
+                "name": "local_parquet_data",
+                "type": "parquet",
+                "path": "data",
+                "description": "本地Parquet数据目录",
+                "fields": ["sales_volume", "company", "year", "month", "region"],  # 示例字段
+                "supported_formats": ["parquet"]
             }
         ]
         
@@ -235,7 +250,8 @@ class Walker:
                     "target": "data_description",  # 分析目标
                     "parameters": {...},  # 参数
                     "data_source": "...",  # 数据源
-                    "preferences": {...}  # 用户偏好
+                    "preferences": {...},  # 用户偏好
+                    "analysis_requirements": {...}  # 分析需求
                 }
             max_strategies: 最大策略数量
             min_compatibility_score: 最小兼容性分数
@@ -243,23 +259,57 @@ class Walker:
         Returns:
             List[ModuleStrategy]: 策略列表，按优先级排序
         """
+        logger.info(f"开始生成策略，用户意图: {user_intent}")
         strategies = []
         
         # 确保模块已注册
         if not self.registered_modules:
+            logger.info("模块未注册，开始自动发现模块")
             self.auto_discover_modules()
         
-        # 遍历所有注册的模块
-        for module_id, module_data in self.registered_modules.items():
+        logger.info(f"当前已注册模块: {list(self.registered_modules.keys())}")
+        logger.info(f"可用数据库: {[db.get('name', 'Unknown') for db in self.available_databases]}")
+        
+        # 获取分析需求
+        analysis_requirements = user_intent.get('analysis_requirements', {})
+        required_modules = analysis_requirements.get('modules_needed', [])
+        execution_order = analysis_requirements.get('execution_order', [])
+        
+        # 如果没有指定模块需求，使用默认的data_describe模块
+        if not required_modules:
+            required_modules = ['data_describe']
+            execution_order = ['data_describe']
+        
+        logger.info(f"根据分析需求生成策略，需要的模块: {required_modules}")
+        
+        # 为每个需要的模块生成策略
+        for i, module_id in enumerate(required_modules):
+            if module_id not in self.registered_modules:
+                logger.warning(f"模块 {module_id} 未注册，跳过")
+                continue
+                
+            module_data = self.registered_modules[module_id]
             module_instance = module_data['instance']
             module_info = module_data['info']
             
+            # 如果模块实例为None，进行延迟实例化
+            if module_instance is None:
+                try:
+                    module_instance = self._instantiate_module(module_info)
+                    self.registered_modules[module_id]['instance'] = module_instance
+                    logger.info(f"延迟实例化模块: {module_id}")
+                except Exception as e:
+                    logger.error(f"实例化模块 {module_id} 失败: {e}")
+                    continue
+            
             # 遍历所有可用数据库
             for db_info in self.available_databases:
+                logger.info(f"检查模块 {module_id} 与数据库 {db_info.get('name', 'Unknown')} 的兼容性")
                 # 检查模块与数据库的兼容性
                 compatibility = self._check_module_database_compatibility(
                     module_instance, db_info
                 )
+                logger.info(f"兼容性检查结果: {compatibility}")
                 
                 if compatibility['compatible'] and compatibility['score'] >= min_compatibility_score:
                     # 生成参数候选
@@ -268,10 +318,14 @@ class Walker:
                     )
                     
                     for params in parameter_candidates:
-                        # 计算策略优先级
-                        priority = self._calculate_strategy_priority(
+                        # 计算策略优先级（考虑执行顺序）
+                        base_priority = self._calculate_strategy_priority(
                             module_info, user_intent, compatibility, params
                         )
+                        
+                        # 根据执行顺序调整优先级
+                        order_bonus = (len(execution_order) - i) * 10 if module_id in execution_order else 0
+                        final_priority = base_priority + order_bonus
                         
                         # 创建策略
                         strategy = ModuleStrategy(
@@ -281,7 +335,7 @@ class Walker:
                             parameters=params,
                             database_info=db_info,
                             compatibility_score=compatibility['score'],
-                            priority=priority,
+                            priority=final_priority,
                             estimated_execution_time=self._estimate_execution_time(
                                 module_info, db_info, params
                             )
@@ -291,16 +345,33 @@ class Walker:
         
         # 按优先级排序并限制数量
         strategies.sort(key=lambda x: x.priority, reverse=True)
+        logger.info(f"生成了 {len(strategies)} 个策略，返回前 {min(max_strategies, len(strategies))} 个")
         return strategies[:max_strategies]
     
     def _check_module_database_compatibility(self, 
                                            module_instance: Any, 
                                            db_info: Dict[str, Any]) -> Dict[str, Any]:
         """检查模块与数据库的兼容性"""
+        if module_instance is None:
+            logger.error("模块实例为None，无法检查兼容性")
+            return {
+                'compatible': False,
+                'score': 0.0,
+                'reason': '模块实例为None'
+            }
+        
         db_type = db_info.get('type', '')
         available_fields = db_info.get('fields', [])
         
-        return module_instance.check_database_compatibility(db_type, available_fields)
+        try:
+            return module_instance.check_database_compatibility(db_type, available_fields)
+        except Exception as e:
+            logger.error(f"检查模块兼容性时出错: {e}")
+            return {
+                'compatible': False,
+                'score': 0.0,
+                'reason': f'兼容性检查失败: {str(e)}'
+            }
     
     def _generate_parameter_candidates(self, 
                                      module_info: Dict[str, Any],
@@ -447,6 +518,40 @@ class Walker:
         complexity_multiplier = 1.0 + sum(complexity_indicators) * 0.5
         
         return base_time * complexity_multiplier
+    
+    def _instantiate_module(self, module_info: Dict[str, Any]) -> Any:
+        """实例化模块"""
+        try:
+            # 支持两种配置格式：module_path 或 file_path
+            module_path = module_info.get('module_path')
+            file_path = module_info.get('file_path')
+            class_name = module_info.get('class_name')
+            
+            if not class_name:
+                raise ValueError(f"模块信息缺少class_name: {module_info}")
+            
+            # 如果有file_path，转换为module_path
+            if file_path and not module_path:
+                # 将文件路径转换为模块路径
+                # 例如: modules/data_describe_module.py -> modules.data_describe_module
+                module_path = file_path.replace('/', '.').replace('.py', '')
+                logger.info(f"将file_path转换为module_path: {file_path} -> {module_path}")
+            
+            if not module_path:
+                raise ValueError(f"模块信息不完整: module_path={module_path}, file_path={file_path}, class_name={class_name}")
+            
+            # 动态导入模块
+            module = importlib.import_module(module_path)
+            module_class = getattr(module, class_name)
+            
+            # 创建实例
+            instance = module_class()
+            logger.info(f"成功实例化模块: {module_path}.{class_name}")
+            return instance
+            
+        except Exception as e:
+            logger.error(f"实例化模块失败: {e}")
+            raise
     
     def execute_strategy(self, strategy: ModuleStrategy) -> StrategyExecutionResult:
         """执行单个策略
