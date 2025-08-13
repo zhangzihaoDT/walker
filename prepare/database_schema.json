@@ -1,0 +1,699 @@
+{
+  "scan_summary": {
+    "total_files": 3,
+    "total_tables": 3,
+    "scan_status": "扫描完成",
+    "data_directory": "/Users/zihao_/Documents/github/W33_utils_3/data"
+  },
+  "databases": {
+    "business_daily_metrics.parquet": {
+      "file_name": "business_daily_metrics.parquet",
+      "file_type": "PARQUET",
+      "file_size_mb": 0.09,
+      "tables": {
+        "business_daily_metrics": {
+          "table_name": "business_daily_metrics",
+          "row_count": 556,
+          "column_count": 23,
+          "columns": {
+            "date": {
+              "data_type": "DATETIME",
+              "pandas_dtype": "datetime64[ns]",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 556,
+              "sample_values": [
+                "2024-01-01T00:00:00",
+                "2024-01-02T00:00:00",
+                "2024-01-03T00:00:00"
+              ]
+            },
+            "有效线索数": {
+              "data_type": "INTEGER",
+              "pandas_dtype": "int64",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 548,
+              "sample_values": [
+                "6131",
+                "4956",
+                "5969"
+              ]
+            },
+            "抖音战队线索数": {
+              "data_type": "INTEGER",
+              "pandas_dtype": "int64",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 528,
+              "sample_values": [
+                "593",
+                "914",
+                "1023"
+              ]
+            },
+            "下发线索数": {
+              "data_type": "INTEGER",
+              "pandas_dtype": "int64",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 539,
+              "sample_values": [
+                "3344",
+                "2994",
+                "4153"
+              ]
+            },
+            "有效试驾数": {
+              "data_type": "INTEGER",
+              "pandas_dtype": "int64",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 430,
+              "sample_values": [
+                "582",
+                "459",
+                "504"
+              ]
+            },
+            "试驾锁单数": {
+              "data_type": "FLOAT",
+              "pandas_dtype": "float64",
+              "nullable": true,
+              "null_count": 2,
+              "unique_count": 165,
+              "sample_values": [
+                "73.0",
+                "13.0",
+                "22.0"
+              ]
+            },
+            "锁单数": {
+              "data_type": "FLOAT",
+              "pandas_dtype": "float64",
+              "nullable": true,
+              "null_count": 1,
+              "unique_count": 279,
+              "sample_values": [
+                "257.0",
+                "57.0",
+                "77.0"
+              ]
+            },
+            "小订数": {
+              "data_type": "FLOAT",
+              "pandas_dtype": "float64",
+              "nullable": true,
+              "null_count": 272,
+              "unique_count": 112,
+              "sample_values": [
+                "1.0",
+                "3.0",
+                "8.0"
+              ]
+            },
+            "小订留存锁单数": {
+              "data_type": "FLOAT",
+              "pandas_dtype": "float64",
+              "nullable": true,
+              "null_count": 254,
+              "unique_count": 100,
+              "sample_values": [
+                "1.0",
+                "1.0",
+                "1.0"
+              ]
+            },
+            "本品牌人群总资产资产": {
+              "data_type": "FLOAT",
+              "pandas_dtype": "float64",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 554,
+              "sample_values": [
+                "122873472.0",
+                "120326132.0",
+                "119458720.0"
+              ]
+            },
+            "本品牌日新增": {
+              "data_type": "FLOAT",
+              "pandas_dtype": "float64",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 554,
+              "sample_values": [
+                "1884880.0",
+                "1547920.0",
+                "1414313.0"
+              ]
+            },
+            "本品牌日流失": {
+              "data_type": "FLOAT",
+              "pandas_dtype": "float64",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 554,
+              "sample_values": [
+                "3616930.0",
+                "4095260.0",
+                "2281725.0"
+              ]
+            },
+            "本品牌净增": {
+              "data_type": "INTEGER",
+              "pandas_dtype": "int64",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 554,
+              "sample_values": [
+                "-1732050",
+                "-2547340",
+                "-867412"
+              ]
+            },
+            "试驾锁单占比": {
+              "data_type": "FLOAT",
+              "pandas_dtype": "float64",
+              "nullable": true,
+              "null_count": 2,
+              "unique_count": 484,
+              "sample_values": [
+                "0.2840466926070039",
+                "0.22807017543859648",
+                "0.2857142857142857"
+              ]
+            },
+            "小订留存占比": {
+              "data_type": "FLOAT",
+              "pandas_dtype": "float64",
+              "nullable": true,
+              "null_count": 254,
+              "unique_count": 283,
+              "sample_values": [
+                "0.011111111111111112",
+                "0.006944444444444444",
+                "0.02702702702702703"
+              ]
+            },
+            "线索转化率": {
+              "data_type": "FLOAT",
+              "pandas_dtype": "float64",
+              "nullable": true,
+              "null_count": 1,
+              "unique_count": 555,
+              "sample_values": [
+                "0.04191812102430272",
+                "0.011501210653753027",
+                "0.012899983246775003"
+              ]
+            },
+            "抖音线索占比": {
+              "data_type": "FLOAT",
+              "pandas_dtype": "float64",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 556,
+              "sample_values": [
+                "0.09672157886152341",
+                "0.1844229217110573",
+                "0.17138549170715361"
+              ]
+            },
+            "锁单数_7日均值": {
+              "data_type": "FLOAT",
+              "pandas_dtype": "float64",
+              "nullable": true,
+              "null_count": 13,
+              "unique_count": 477,
+              "sample_values": [
+                "111.85714285714286",
+                "90.85714285714286",
+                "94.42857142857143"
+              ]
+            },
+            "有效试驾数_7日均值": {
+              "data_type": "FLOAT",
+              "pandas_dtype": "float64",
+              "nullable": true,
+              "null_count": 6,
+              "unique_count": 524,
+              "sample_values": [
+                "642.7142857142857",
+                "630.1428571428571",
+                "635.0"
+              ]
+            },
+            "试驾锁单占比_7日均值": {
+              "data_type": "FLOAT",
+              "pandas_dtype": "float64",
+              "nullable": true,
+              "null_count": 14,
+              "unique_count": 542,
+              "sample_values": [
+                "0.30307109298274726",
+                "0.3066488381947337",
+                "0.3211057120867809"
+              ]
+            },
+            "小订留存占比_7日均值": {
+              "data_type": "FLOAT",
+              "pandas_dtype": "float64",
+              "nullable": true,
+              "null_count": 355,
+              "unique_count": 201,
+              "sample_values": [
+                "0.031031833932433698",
+                "0.03601276849083305",
+                "0.03880208480733015"
+              ]
+            },
+            "线索转化率_7日均值": {
+              "data_type": "FLOAT",
+              "pandas_dtype": "float64",
+              "nullable": true,
+              "null_count": 13,
+              "unique_count": 543,
+              "sample_values": [
+                "0.01689435267525583",
+                "0.01366052569532226",
+                "0.014284191754074037"
+              ]
+            },
+            "抖音线索占比_7日均值": {
+              "data_type": "FLOAT",
+              "pandas_dtype": "float64",
+              "nullable": true,
+              "null_count": 6,
+              "unique_count": 550,
+              "sample_values": [
+                "0.14107154928148824",
+                "0.15850496339429676",
+                "0.1596356119070471"
+              ]
+            }
+          },
+          "memory_usage_mb": 0.1
+        }
+      }
+    },
+    "order_observation_data.parquet": {
+      "file_name": "order_observation_data.parquet",
+      "file_type": "PARQUET",
+      "file_size_mb": 2.11,
+      "tables": {
+        "order_observation_data": {
+          "table_name": "order_observation_data",
+          "row_count": 140874,
+          "column_count": 11,
+          "columns": {
+            "Order Number": {
+              "data_type": "INT64",
+              "pandas_dtype": "Int64",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 140874,
+              "sample_values": [
+                1056378090,
+                4770319611,
+                6288962382
+              ]
+            },
+            "是否试驾": {
+              "data_type": "TEXT",
+              "pandas_dtype": "object",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 2,
+              "sample_values": [
+                "0",
+                "0",
+                "1"
+              ]
+            },
+            "Product Name": {
+              "data_type": "TEXT",
+              "pandas_dtype": "object",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 51,
+              "sample_values": [
+                "L6 Max 长续航版",
+                "L6 Max 长续航版",
+                "L6 Max 标准版"
+              ]
+            },
+            "车型分组": {
+              "data_type": "CATEGORY",
+              "pandas_dtype": "category",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 6,
+              "sample_values": [
+                "DM0",
+                "DM0",
+                "DM0"
+              ]
+            },
+            "日(Order Create Time)": {
+              "data_type": "DATETIME",
+              "pandas_dtype": "datetime64[ns]",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 898,
+              "sample_values": [
+                "2024-05-28T00:00:00",
+                "2024-06-01T00:00:00",
+                "2024-08-31T00:00:00"
+              ]
+            },
+            "日(Lock Time)": {
+              "data_type": "DATETIME",
+              "pandas_dtype": "datetime64[ns]",
+              "nullable": true,
+              "null_count": 28051,
+              "unique_count": 892,
+              "sample_values": [
+                "2024-08-31T00:00:00",
+                "2024-08-31T00:00:00",
+                "2023-12-14T00:00:00"
+              ]
+            },
+            "DATE([Invoice Upload Time])": {
+              "data_type": "DATETIME",
+              "pandas_dtype": "datetime64[ns]",
+              "nullable": true,
+              "null_count": 140874,
+              "unique_count": 0,
+              "sample_values": []
+            },
+            "交付判断": {
+              "data_type": "CATEGORY",
+              "pandas_dtype": "category",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 4,
+              "sample_values": [
+                "未锁单订单",
+                "未锁单订单",
+                "锁单 30 日以上未交付"
+              ]
+            },
+            "owner_gender": {
+              "data_type": "CATEGORY",
+              "pandas_dtype": "category",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 3,
+              "sample_values": [
+                "男",
+                "男",
+                "男"
+              ]
+            },
+            "owner_age": {
+              "data_type": "UINT8",
+              "pandas_dtype": "UInt8",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 66,
+              "sample_values": [
+                24,
+                30,
+                51
+              ]
+            },
+            "开票价格": {
+              "data_type": "INT32",
+              "pandas_dtype": "Int32",
+              "nullable": true,
+              "null_count": 50181,
+              "unique_count": 3367,
+              "sample_values": [
+                376988,
+                398788,
+                390788
+              ]
+            }
+          },
+          "memory_usage_mb": 27.05
+        }
+      }
+    },
+    "乘用车上险量_0723.parquet": {
+      "file_name": "乘用车上险量_0723.parquet",
+      "file_type": "PARQUET",
+      "file_size_mb": 107.58,
+      "tables": {
+        "乘用车上险量_0723": {
+          "table_name": "乘用车上险量_0723",
+          "row_count": 10224552,
+          "column_count": 20,
+          "columns": {
+            "body_style": {
+              "data_type": "CATEGORY",
+              "pandas_dtype": "category",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 4,
+              "sample_values": [
+                "SUV",
+                "SUV",
+                "SUV"
+              ]
+            },
+            "is_new_energy_brand": {
+              "data_type": "CATEGORY",
+              "pandas_dtype": "category",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 2,
+              "sample_values": [
+                "新势力",
+                "新势力",
+                "新势力"
+              ]
+            },
+            "province": {
+              "data_type": "CATEGORY",
+              "pandas_dtype": "category",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 31,
+              "sample_values": [
+                "上海市",
+                "上海市",
+                "北京市"
+              ]
+            },
+            "brand": {
+              "data_type": "CATEGORY",
+              "pandas_dtype": "category",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 235,
+              "sample_values": [
+                "特斯拉",
+                "特斯拉",
+                "特斯拉"
+              ]
+            },
+            "city_tier": {
+              "data_type": "CATEGORY",
+              "pandas_dtype": "category",
+              "nullable": true,
+              "null_count": 91,
+              "unique_count": 5,
+              "sample_values": [
+                "一线城市",
+                "一线城市",
+                "一线城市"
+              ]
+            },
+            "city": {
+              "data_type": "CATEGORY",
+              "pandas_dtype": "category",
+              "nullable": true,
+              "null_count": 1,
+              "unique_count": 369,
+              "sample_values": [
+                "上海市",
+                "上海市",
+                "北京市"
+              ]
+            },
+            "height_mm": {
+              "data_type": "FLOAT",
+              "pandas_dtype": "float64",
+              "nullable": true,
+              "null_count": 55720,
+              "unique_count": 523,
+              "sample_values": [
+                "1624.0",
+                "1624.0",
+                "1624.0"
+              ]
+            },
+            "fuel_type": {
+              "data_type": "CATEGORY",
+              "pandas_dtype": "category",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 9,
+              "sample_values": [
+                "纯电动",
+                "纯电动",
+                "纯电动"
+              ]
+            },
+            "width_mm": {
+              "data_type": "FLOAT",
+              "pandas_dtype": "float64",
+              "nullable": true,
+              "null_count": 55720,
+              "unique_count": 352,
+              "sample_values": [
+                "1920.0",
+                "1920.0",
+                "1920.0"
+              ]
+            },
+            "wheelbase_mm": {
+              "data_type": "FLOAT",
+              "pandas_dtype": "float64",
+              "nullable": true,
+              "null_count": 55720,
+              "unique_count": 407,
+              "sample_values": [
+                "2890.0",
+                "2890.0",
+                "2890.0"
+              ]
+            },
+            "tp_center": {
+              "data_type": "FLOAT",
+              "pandas_dtype": "float64",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 79425,
+              "sample_values": [
+                "245462.99556299596",
+                "245462.995562996",
+                "245462.995562996"
+              ]
+            },
+            "sub_model_id": {
+              "data_type": "INTEGER",
+              "pandas_dtype": "int64",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 2290,
+              "sample_values": [
+                "10400",
+                "10400",
+                "10400"
+              ]
+            },
+            "is_luxury_brand": {
+              "data_type": "CATEGORY",
+              "pandas_dtype": "category",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 2,
+              "sample_values": [
+                "豪华",
+                "豪华",
+                "豪华"
+              ]
+            },
+            "fuel_type_group": {
+              "data_type": "CATEGORY",
+              "pandas_dtype": "category",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 2,
+              "sample_values": [
+                "新能源",
+                "新能源",
+                "新能源"
+              ]
+            },
+            "model_name": {
+              "data_type": "CATEGORY",
+              "pandas_dtype": "category",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 1524,
+              "sample_values": [
+                "MODEL Y",
+                "MODEL Y",
+                "MODEL Y"
+              ]
+            },
+            "date": {
+              "data_type": "DATETIME",
+              "pandas_dtype": "datetime64[ns]",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 66,
+              "sample_values": [
+                "2024-12-01T00:00:00",
+                "2024-12-01T00:00:00",
+                "2024-12-01T00:00:00"
+              ]
+            },
+            "tp_avg": {
+              "data_type": "FLOAT",
+              "pandas_dtype": "float64",
+              "nullable": true,
+              "null_count": 287796,
+              "unique_count": 53802,
+              "sample_values": [
+                "245462.995562996",
+                "245462.995562996",
+                "245462.995562996"
+              ]
+            },
+            "sales_volume": {
+              "data_type": "INTEGER",
+              "pandas_dtype": "int64",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 1727,
+              "sample_values": [
+                "633",
+                "4045",
+                "568"
+              ]
+            },
+            "sub_model_name": {
+              "data_type": "CATEGORY",
+              "pandas_dtype": "category",
+              "nullable": false,
+              "null_count": 0,
+              "unique_count": 2245,
+              "sample_values": [
+                "MODEL Y",
+                "MODEL Y",
+                "MODEL Y"
+              ]
+            },
+            "length_mm": {
+              "data_type": "FLOAT",
+              "pandas_dtype": "float64",
+              "nullable": true,
+              "null_count": 55720,
+              "unique_count": 863,
+              "sample_values": [
+                "4797.0",
+                "4797.0",
+                "4797.0"
+              ]
+            }
+          },
+          "memory_usage_mb": 848.73
+        }
+      }
+    }
+  }
+}
