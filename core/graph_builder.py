@@ -256,7 +256,7 @@ class GraphBuilder:
                 )
                 response = self.glm_client.generate_response(prompt)
                 
-            elif intent == "general_chat":
+            elif intent in ["general_chat", "general_conversation"]:
                 # 一般对话
                 prompt = GENERAL_CHAT_PROMPT.format(user_question=user_question)
                 response = self.glm_client.generate_response(prompt)
