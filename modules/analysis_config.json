@@ -34,11 +34,113 @@
         "描述性统计",
         "内存使用分析"
       ]
+    },
+    {
+      "module_id": "sales_query",
+      "module_name": "销量查询模块",
+      "description": "基于乘用车上险量数据的多维度销量查询模块，支持品牌、时间、地区等维度的销量分析",
+      "class_name": "SalesQueryModule",
+      "file_path": "modules/sales_query_module.py",
+      "supported_databases": ["parquet", "duckdb", "pandas"],
+      "required_fields": ["sales_volume", "date"],
+      "optional_fields": [
+        "brand",
+        "model_name",
+        "province",
+        "city",
+        "fuel_type",
+        "body_style",
+        "is_luxury_brand",
+        "city_tier"
+      ],
+      "parameter_requirements": [
+        {
+          "name": "data_source",
+          "type": "string",
+          "required": true,
+          "description": "数据源路径，默认为乘用车上险量数据",
+          "default_value": "data/乘用车上险量_0723.parquet",
+          "example": "data/乘用车上险量_0723.parquet"
+        },
+        {
+          "name": "user_question",
+          "type": "string",
+          "required": true,
+          "description": "用户的自然语言查询问题",
+          "default_value": null,
+          "example": "比亚迪2024年的销量如何？"
+        },
+        {
+          "name": "brands",
+          "type": "array",
+          "required": false,
+          "description": "指定查询的品牌列表",
+          "default_value": [],
+          "example": ["Tesla", "BYD"]
+        },
+        {
+          "name": "provinces",
+          "type": "array",
+          "required": false,
+          "description": "指定查询的省份列表",
+          "default_value": [],
+          "example": ["广东省", "浙江省"]
+        },
+        {
+          "name": "cities",
+          "type": "array",
+          "required": false,
+          "description": "指定查询的城市列表",
+          "default_value": [],
+          "example": ["深圳市", "杭州市"]
+        },
+        {
+          "name": "fuel_types",
+          "type": "array",
+          "required": false,
+          "description": "指定查询的燃料类型列表",
+          "default_value": [],
+          "example": ["纯电动", "插电式混合动力"]
+        },
+        {
+          "name": "start_date",
+          "type": "string",
+          "required": false,
+          "description": "查询开始日期",
+          "default_value": null,
+          "example": "2024-01-01"
+        },
+        {
+          "name": "end_date",
+          "type": "string",
+          "required": false,
+          "description": "查询结束日期",
+          "default_value": null,
+          "example": "2024-12-31"
+        },
+        {
+          "name": "limit",
+          "type": "integer",
+          "required": false,
+          "description": "限制返回结果数量",
+          "default_value": null,
+          "example": 10
+        }
+      ],
+      "capabilities": [
+        "品牌销量查询",
+        "时间趋势分析",
+        "地区销量统计",
+        "燃料类型分析",
+        "多维度组合查询",
+        "自然语言参数提取",
+        "智能查询模板选择"
+      ]
     }
   ],
   "metadata": {
-    "version": "1.0.0",
-    "last_updated": "2024-01-01",
-    "total_modules": 1
+    "version": "1.1.0",
+    "last_updated": "2024-01-15",
+    "total_modules": 2
   }
 }

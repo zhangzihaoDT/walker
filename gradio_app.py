@@ -105,6 +105,65 @@ class DataChatApp:
             
             response = result["final_response"]
             
+            # 添加详细的调试信息，与test_gradio_integration.py对齐
+            intent_result = result.get("intent_result", {})
+            execution_results = result.get("execution_results", [])
+            
+            logger.info(f"📊 执行结果分析:")
+            logger.info(f"  - 意图识别: {intent_result.get('intent', 'unknown')}")
+            logger.info(f"  - 执行模块数: {len(execution_results)}")
+            logger.info(f"  - 响应长度: {len(response)} 字符")
+            
+            # 显示执行结果详情
+            for i, exec_result in enumerate(execution_results, 1):
+                if exec_result.get('success'):
+                    data_count = len(exec_result.get('data', []))
+                    logger.info(f"  - 模块{i}: 成功，返回{data_count}条记录")
+                    
+                    # 显示详细的查询信息
+                    module_name = exec_result.get('module', f'模块{i}')
+                    logger.info(f"    🔍 {module_name}执行详情:")
+                    
+                    # 显示分析信息
+                    analysis = exec_result.get('analysis', {})
+                    if analysis:
+                        logger.info(f"      - 查询类型: {analysis.get('query_type', 'unknown')}")
+                        logger.info(f"      - 使用模板: {analysis.get('template_used', 'unknown')}")
+                        logger.info(f"      - 查询参数: {analysis.get('parameters_used', {})}")
+                        
+                        # 显示数据摘要
+                        data_summary = analysis.get('data_summary', {})
+                        if data_summary and isinstance(data_summary, dict):
+                            logger.info(f"      - 记录数量: {data_summary.get('record_count', 0)}")
+                            if 'sales_stats' in data_summary:
+                                stats = data_summary['sales_stats']
+                                logger.info(f"      - 销量统计: 总计{stats.get('total', 0):,.0f}辆, 平均{stats.get('average', 0):,.0f}辆")
+                                if 'min' in stats and 'max' in stats:
+                                    logger.info(f"      - 销量范围: {stats.get('min', 0):,.0f} - {stats.get('max', 0):,.0f}辆")
+                    
+                    # 显示洞察信息
+                    insights = exec_result.get('insights', [])
+                    if insights and len(insights) > 0:
+                        logger.info(f"      - 关键洞察:")
+                        for insight in insights[:3]:  # 显示前3个洞察
+                            logger.info(f"        * {insight}")
+                    else:
+                        logger.info(f"      - 关键洞察: 查询返回了 {data_count} 条记录")
+                    
+                    # 显示可视化配置
+                    visualization = exec_result.get('visualization', {})
+                    if visualization:
+                        logger.info(f"      - 可视化配置:")
+                        logger.info(f"        * 图表类型: {visualization.get('chart_type', 'unknown')}")
+                        logger.info(f"        * 标题: {visualization.get('title', 'unknown')}")
+                        if 'x_axis' in visualization:
+                            logger.info(f"        * X轴: {visualization['x_axis']}")
+                        if 'y_axis' in visualization:
+                            logger.info(f"        * Y轴: {visualization['y_axis']}")
+                        
+                else:
+                    logger.info(f"  - 模块{i}: 失败，错误: {exec_result.get('error', '未知')}")
+            
             # 更新聊天历史
             history.append([message, response])
             

@@ -115,51 +115,65 @@ flowchart TD
     style EE fill:#ffebee
 ```
 
-## 意图识别阶段详细流程图
+## 意图识别阶段详细流程图（更新版）
 
 ```mermaid
 flowchart TD
-    A[用户输入问题] --> B[意图识别节点]
+    A[用户输入问题] --> B[意图识别节点<br/>agents/intent_parser.py]
     B --> C{解析意图结果}
 
     C --> D[intent: data_query/data_analysis<br/>need_data_analysis: true]
-    C --> E[intent: general_chat/general_conversation<br/>need_data_analysis: false]
-    C --> F[其他意图或解析失败]
+    C --> E[intent: query_only<br/>need_data_analysis: false]
+    C --> F[intent: general_chat/general_conversation<br/>need_data_analysis: false]
+    C --> G[其他意图或解析失败]
 
-    D --> G{条件路由判断}
-    E --> H[跳过数据分析]
-    F --> I[使用默认意图]
+    D --> H{条件路由判断}
+    E --> I[✨ SQL Agent<br/>直接查询执行]
+    F --> J[跳过数据分析]
+    G --> K[使用默认意图]
 
-    G --> |复杂数据查询| J[Walker策略]
-    G --> |简单数据分析| K[传统数据分析]
+    H --> |复杂数据查询| L[Walker策略]
 
-    J --> L[执行计划生成]
-    L --> M[模块执行]
-    M --> N[响应生成]
+    L --> M[执行计划生成]
+    M --> N[模块执行]
+    N --> O[响应生成]
 
-    K --> O[数据分析执行]
-    O --> N
+    I --> P[SQL查询结果]
+    P --> O
 
-    H --> N
-    I --> N
+    J --> O
+    K --> O
 
-    N --> P{响应生成逻辑}
+    O --> Q{响应生成逻辑}
 
-    P --> |data_query/data_analysis<br/>且分析成功| Q[使用分析结果生成回答]
-    P --> |general_chat/general_conversation| R[一般对话回答]
-    P --> |其他情况| S[❌ 错误回复:<br/>抱歉，我无法理解您的问题]
+    Q --> |data_query/data_analysis<br/>且分析成功| R[使用分析结果生成回答]
+    Q --> |query_only<br/>且查询成功| S[使用SQL查询结果生成回答]
+    Q --> |general_chat/general_conversation| T[一般对话回答]
+    Q --> |其他情况| U[❌ 错误回复:<br/>抱歉，我无法理解您的问题]
 
-    Q --> T[最终响应]
-    R --> T
-    S --> T
+    R --> V[最终响应]
+    S --> V
+    T --> V
+    U --> V
 
     style D fill:#e1f5fe
-    style E fill:#f3e5f5
-    style F fill:#ffebee
-    style S fill:#ffcdd2
+    style E fill:#fff3e0
+    style F fill:#f3e5f5
+    style G fill:#ffebee
+    style I fill:#e8f5e8
+    style U fill:#ffcdd2
+    style T fill:#c8e6c9
     style R fill:#c8e6c9
-    style Q fill:#c8e6c9
+    style S fill:#c8e6c9
 ```
+
+### 主要变化说明
+
+1. **简化意图类型**：移除了重复的`data_query`类型，避免与`query_only`混淆
+2. **移除传统数据分析分支**：原有的data_analysis_node已被SQL Agent替代
+3. **独立的意图解析器**：意图识别逻辑已提取到`agents/intent_parser.py`
+4. **SQL Agent节点**：新增专门处理直接查询的节点
+5. **简化的路由逻辑**：条件路由更加清晰，支持三种主要处理路径
 
 ## Walker 策略生成详细流程图
 

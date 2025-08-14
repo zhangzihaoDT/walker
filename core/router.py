@@ -73,6 +73,8 @@ class DataChatRouter:
             result = {
                 "user_question": user_question,
                 "intent": final_state.get("intent_result", {}),
+                "intent_result": final_state.get("intent_result", {}),  # 添加测试框架期望的字段
+                "execution_results": final_state.get("execution_results", []),  # 添加测试框架期望的字段
                 "data_analysis": {
                     "executed": final_state.get("intent_result", {}).get("need_data_analysis", False),
                     "success": final_state.get("analysis_success", False),
@@ -124,12 +126,16 @@ class DataChatRouter:
             # 步骤1: 意图识别
             state = self.graph_builder.recognize_intent_node(state)
             
-            # 步骤2: 条件判断是否需要数据分析
-            next_step = self.graph_builder.should_analyze_data(state)
+            # 步骤2: 条件判断路由策略
+            next_step = self.graph_builder.should_use_walker(state)
             
-            # 步骤3: 数据分析（如果需要）
-            if next_step == "data_analysis":
-                state = self.graph_builder.data_analysis_node(state)
+            # 步骤3: 根据路由执行相应处理
+            if next_step == "walker_strategy":
+                state = self.graph_builder.walker_strategy_node(state)
+                state = self.graph_builder.execution_planning_node(state)
+                state = self.graph_builder.module_execution_node(state)
+            elif next_step == "sql_agent":
+                state = self.graph_builder.sql_agent_node(state)
             
             # 步骤4: 响应生成
             state = self.graph_builder.response_generation_node(state)
@@ -138,6 +144,8 @@ class DataChatRouter:
             result = {
                 "user_question": user_question,
                 "intent": state.get("intent_result", {}),
+                "intent_result": state.get("intent_result", {}),  # 添加测试框架期望的字段
+                "execution_results": state.get("execution_results", []),  # 添加执行结果列表
                 "data_analysis": {
                     "executed": state.get("intent_result", {}).get("need_data_analysis", False),
                     "success": state.get("analysis_success", False),
@@ -157,6 +165,8 @@ class DataChatRouter:
             return {
                 "user_question": user_question,
                 "intent": {"intent": "error", "confidence": 0.0},
+                "intent_result": {"intent": "error", "confidence": 0.0},  # 添加测试框架期望的字段
+                "execution_results": [],  # 添加空的执行结果列表
                 "data_analysis": {
                     "executed": False,
                     "success": False,
@@ -199,6 +209,8 @@ class DataChatRouter:
                 return {
                     "user_question": user_question,
                     "intent": {"intent": "error", "confidence": 0.0},
+                    "intent_result": {"intent": "error", "confidence": 0.0},  # 添加测试框架期望的字段
+                    "execution_results": [],  # 添加空的执行结果列表
                     "data_analysis": {
                         "executed": False,
                         "success": False,
@@ -257,7 +269,7 @@ class DataChatWorkflow:
     def run_data_analysis(self):
         """向后兼容的数据分析方法"""
         state = self.router.create_initial_state("")
-        state = self.router.graph_builder.data_analysis_node(state)
+        state = self.router.graph_builder.walker_strategy_node(state)
         return state.get("analysis_success", False), state.get("analysis_result", "")
     
     def generate_response(self, user_question: str, intent_result: Dict[str, Any], analysis_result: str = None) -> str:

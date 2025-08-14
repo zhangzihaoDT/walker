@@ -10,6 +10,10 @@ import logging
 from typing import Dict, Any, Optional
 from langchain_openai import ChatOpenAI
 from langchain.schema import HumanMessage
+from dotenv import load_dotenv
+
+# 加载环境变量
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -25,19 +29,24 @@ class GLMClient:
         """
         self.model_type = model_type
         
+        # 获取API密钥
+        api_key = os.getenv("ZHIPU_API_KEY")
+        if not api_key:
+            raise ValueError("未找到ZHIPU_API_KEY环境变量，请检查.env文件配置")
+        
         if model_type == "flash":
             self.client = ChatOpenAI(
                 model="glm-4-flash",
-                openai_api_base="https://open.bigmodel.cn/api/paas/v4/",
-                openai_api_key=os.getenv("ZHIPU_API_KEY"),
+                base_url="https://open.bigmodel.cn/api/paas/v4/",
+                api_key=api_key,
                 temperature=0.1,
                 max_tokens=4000
             )
         elif model_type == "plus":
             self.client = ChatOpenAI(
                 model="glm-4-plus",
-                openai_api_base="https://open.bigmodel.cn/api/paas/v4/",
-                openai_api_key=os.getenv("ZHIPU_API_KEY"),
+                base_url="https://open.bigmodel.cn/api/paas/v4/",
+                api_key=api_key,
                 temperature=0.1,
                 max_tokens=4000
             )
