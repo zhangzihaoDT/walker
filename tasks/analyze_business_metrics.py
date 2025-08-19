@@ -350,12 +350,13 @@ def analyze_post_launch_changes(df):
     
     return results_df
 
-def analyze_presale_post_launch_comparison(df):
+def analyze_presale_post_launch_comparison(df, days_after_launch=3):
     """
-    横向对比各个预售发布会后3日指标的均值、最大值、最小值
+    横向对比各个预售发布会后N日指标的均值、最大值、最小值
     
     Args:
         df (pd.DataFrame): 业务指标数据
+        days_after_launch (int): 发布会后分析的天数，默认为3天
     """
     # 定义预售发布会时间节点
     presale_events = {
@@ -374,24 +375,26 @@ def analyze_presale_post_launch_comparison(df):
     ]
     
     print("\n" + "="*80)
-    print("预售发布会后3日指标横向对比分析")
+    period_text = "当日" if days_after_launch == 0 else f"后{days_after_launch}日"
+    print(f"预售发布会{period_text}指标横向对比分析")
     print("="*80)
     
     # 确保date列是datetime类型
     df['date'] = pd.to_datetime(df['date'])
     
-    # 收集各预售发布会后3日数据
+    # 收集各预售发布会后N日数据
     comparison_data = {}
     
     for date_str, event_info in presale_events.items():
         event_date = pd.to_datetime(date_str)
         
-        # 后3日数据
-        post_end_date = event_date + timedelta(days=3)
+        # 后N日数据
+        post_end_date = event_date + timedelta(days=days_after_launch)
         post_period_data = df[(df['date'] >= event_date) & (df['date'] <= post_end_date)]
         
         if len(post_period_data) == 0:
-            print(f"\n警告: {event_info['event']} ({date_str}) 后3日数据不足")
+            period_text = "当日" if days_after_launch == 0 else f"后{days_after_launch}日"
+            print(f"\n警告: {event_info['event']} ({date_str}) {period_text}数据不足")
             continue
             
         comparison_data[event_info['name']] = {
@@ -412,7 +415,7 @@ def analyze_presale_post_launch_comparison(df):
                         'max': metric_data.max(),
                         'min': metric_data.min(),
                         'std': metric_data.std(),
-                        'sum': metric_data.sum()  # 新增：3日累计值
+                        'sum': metric_data.sum()  # 新增：N日累计值
                     }
                 else:
                     comparison_data[event_info['name']]['metrics'][metric] = {
@@ -494,12 +497,13 @@ def analyze_presale_post_launch_comparison(df):
                     row += f"{'--':>12}"
             print(row)
         
-        print("\n4. 指标3日累计值对比:")
+        period_text = "当日" if days_after_launch == 0 else f"{days_after_launch}日"
+        print(f"\n4. 指标{period_text}累计值对比:")
         print("-" * 120)
         print(header)
         print("-" * 120)
         
-        # 3日累计值对比
+        # N日累计值对比
         for metric in core_metrics:
             row = f"{metric:<20}"
             for event_name, event_data in comparison_data.items():
@@ -543,7 +547,7 @@ def analyze_presale_post_launch_comparison(df):
                     'improvement_ratio': (best_value / worst_value) if worst_value != 0 else float('inf')
                 })
         
-        # 找出各指标3日累计值表现最好的预售发布会
+        # 找出各指标N日累计值表现最好的预售发布会
         sum_insights = []
         for metric in core_metrics:
             metric_sum_comparison = {}
@@ -567,7 +571,8 @@ def analyze_presale_post_launch_comparison(df):
                 })
         
         # 输出关键洞察 - CM2与其他车型的对比分析
-        print("\nCM2与其他车型预售发布会指标对比分析（基于3日累计值）:")
+        period_text = "当日" if days_after_launch == 0 else f"{days_after_launch}日"
+        print(f"\nCM2与其他车型预售发布会指标对比分析（基于{period_text}累计值）:")
         print("-" * 80)
         
         # 检查CM2是否存在于数据中
