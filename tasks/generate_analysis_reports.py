@@ -33,6 +33,7 @@ from analyze_business_metrics import (
     analyze_presale_ratio_comparison,
     analyze_presale_ratio_comparison_1day,
     Linear_attribution_analysis,
+    leads_regression_model,
     funnel_analysis,
     bayesian_conversion_prediction,
     analyze_presale_daily_orders,
@@ -245,6 +246,14 @@ def generate_business_metrics_report():
         result, output = capture_function_output(Linear_attribution_analysis, df)
         causal_results = result
         report_content.append("## 7. 线性归因建模\n")
+        report_content.append("```\n")
+        report_content.append(output)
+        report_content.append("```\n\n")
+        
+        # 7.5. 线索回归模型 - Lasso + 敏感性分析
+        result, output = capture_function_output(leads_regression_model, df)
+        leads_regression_results = result
+        report_content.append("## 7.5. 线索回归模型 - Lasso + 敏感性分析\n")
         report_content.append("```\n")
         report_content.append(output)
         report_content.append("```\n\n")

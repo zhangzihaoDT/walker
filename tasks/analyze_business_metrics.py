@@ -1604,6 +1604,380 @@ def Linear_attribution_analysis(df):
     
     return attribution_df
 
+def leads_regression_model(df):
+    """
+    模块7.5：线索回归模型 - Lasso + 敏感性分析
+    使用本品牌人群总资产资产、本品牌日新增、本品牌人群流量、抖音战队线索数对有效线索数进行归因分析
+    时间范围：2024年7月1日至2025年8月19日
+    
+    Args:
+        df (pd.DataFrame): 业务指标数据
+    
+    Returns:
+        dict: 包含回归结果和敏感性分析结果的字典
+    """
+    from sklearn.linear_model import Lasso
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.model_selection import cross_val_score, train_test_split
+    from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
+    import warnings
+    warnings.filterwarnings('ignore')
+    
+    print("\n" + "="*80)
+    print("模块7.5：线索回归模型 - Lasso + 敏感性分析")
+    print("="*80)
+    print("分析时间范围：2024年7月1日至2025年8月19日")
+    print("目标变量：有效线索数")
+    print("特征变量：本品牌人群总资产资产、本品牌日新增、本品牌人群流量、抖音战队线索数")
+    
+    # 确保date列是datetime类型
+    df['date'] = pd.to_datetime(df['date'])
+    
+    # 筛选时间范围：2024年7月1日至2025年8月19日
+    start_date = pd.to_datetime('2024-07-01')
+    end_date = pd.to_datetime('2025-08-19')
+    
+    filtered_df = df[(df['date'] >= start_date) & (df['date'] <= end_date)].copy()
+    
+    print(f"\n数据筛选结果：")
+    print(f"  原始数据：{len(df)} 条记录")
+    print(f"  筛选后数据：{len(filtered_df)} 条记录")
+    print(f"  时间范围：{start_date.strftime('%Y-%m-%d')} 至 {end_date.strftime('%Y-%m-%d')}")
+    
+    if len(filtered_df) == 0:
+        print("\n错误：筛选后无数据")
+        return {}
+    
+    # 定义目标变量和特征变量
+    target_variable = '有效线索数'
+    feature_variables = [
+        '本品牌人群总资产资产',
+        '本品牌日新增', 
+        '本品牌人群流量',
+        '抖音战队线索数'
+    ]
+    
+    print(f"\n变量检查：")
+    print(f"  目标变量：{target_variable}")
+    print(f"  特征变量：{', '.join(feature_variables)}")
+    
+    # 检查变量是否存在
+    missing_vars = []
+    if target_variable not in filtered_df.columns:
+        missing_vars.append(target_variable)
+    
+    for var in feature_variables:
+        if var not in filtered_df.columns:
+            missing_vars.append(var)
+    
+    if missing_vars:
+        print(f"\n错误：以下变量不存在于数据中：{', '.join(missing_vars)}")
+        return {}
+    
+    # 准备建模数据
+    model_data = filtered_df[feature_variables + [target_variable, 'date']].copy()
+    
+    # 检查数据质量
+    print(f"\n数据质量检查：")
+    print("-" * 60)
+    
+    for var in [target_variable] + feature_variables:
+        total_count = len(model_data)
+        null_count = model_data[var].isnull().sum()
+        null_pct = (null_count / total_count) * 100
+        
+        if null_count > 0:
+            print(f"  {var:<25} | 空值：{null_count:>4}/{total_count} ({null_pct:>5.1f}%)")
+        else:
+            print(f"  {var:<25} | 无空值")
+    
+    # 删除包含空值的行
+    initial_count = len(model_data)
+    model_data = model_data.dropna()
+    final_count = len(model_data)
+    
+    print(f"\n数据清洗结果：")
+    print(f"  清洗前：{initial_count} 条记录")
+    print(f"  清洗后：{final_count} 条记录")
+    print(f"  删除：{initial_count - final_count} 条记录 ({((initial_count - final_count) / initial_count * 100):.1f}%)")
+    
+    if final_count < 30:
+        print(f"\n警告：清洗后数据量不足（{final_count} < 30），可能影响模型可靠性")
+    
+    # 分离特征和目标变量
+    X = model_data[feature_variables]
+    y = model_data[target_variable]
+    
+    # 基本统计信息
+    print(f"\n变量基本统计：")
+    print("-" * 80)
+    print(f"{'变量名称':<25} {'均值':<12} {'标准差':<12} {'最小值':<12} {'最大值':<12}")
+    print("-" * 80)
+    
+    # 目标变量统计
+    print(f"{target_variable:<25} {y.mean():>10.2f} {y.std():>10.2f} {y.min():>10.2f} {y.max():>10.2f}")
+    
+    # 特征变量统计
+    for var in feature_variables:
+        var_data = X[var]
+        print(f"{var:<25} {var_data.mean():>10.2f} {var_data.std():>10.2f} {var_data.min():>10.2f} {var_data.max():>10.2f}")
+    
+    # 相关性分析
+    print(f"\n特征变量与目标变量的相关性：")
+    print("-" * 50)
+    
+    correlations = []
+    for var in feature_variables:
+        corr = X[var].corr(y)
+        correlations.append((var, corr))
+        print(f"  {var:<25} | 相关系数：{corr:>8.4f}")
+    
+    # 按相关性排序
+    correlations.sort(key=lambda x: abs(x[1]), reverse=True)
+    print(f"\n相关性排序（按绝对值）：")
+    for i, (var, corr) in enumerate(correlations, 1):
+        print(f"  {i}. {var}: {corr:.4f}")
+    
+    # 标准化特征
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    X_scaled_df = pd.DataFrame(X_scaled, columns=feature_variables, index=X.index)
+    
+    print(f"\n特征标准化完成")
+    
+    # 数据分割
+    test_size = min(0.3, max(0.1, 20 / len(model_data)))  # 动态调整测试集大小
+    X_train, X_test, y_train, y_test = train_test_split(
+        X_scaled, y, test_size=test_size, random_state=42
+    )
+    
+    print(f"\n数据分割：")
+    print(f"  训练集：{len(X_train)} 条记录 ({len(X_train)/len(model_data)*100:.1f}%)")
+    print(f"  测试集：{len(X_test)} 条记录 ({len(X_test)/len(model_data)*100:.1f}%)")
+    
+    # Lasso回归参数调优
+    print(f"\nLasso回归参数调优：")
+    print("-" * 50)
+    
+    alphas = [0.001, 0.01, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0]
+    best_alpha = 0.1
+    best_score = -float('inf')
+    alpha_results = []
+    
+    for alpha in alphas:
+        lasso = Lasso(alpha=alpha, random_state=42, max_iter=2000)
+        try:
+            # 使用交叉验证评估
+            cv_folds = min(5, len(X_train) // 5)
+            if cv_folds < 2:
+                cv_folds = 2
+            
+            scores = cross_val_score(lasso, X_train, y_train, cv=cv_folds, scoring='r2')
+            avg_score = scores.mean()
+            std_score = scores.std()
+            
+            alpha_results.append({
+                'alpha': alpha,
+                'cv_score': avg_score,
+                'cv_std': std_score
+            })
+            
+            print(f"  Alpha={alpha:<6} | CV R²={avg_score:>7.4f} ± {std_score:>6.4f}")
+            
+            if avg_score > best_score:
+                best_score = avg_score
+                best_alpha = alpha
+                
+        except Exception as e:
+            print(f"  Alpha={alpha:<6} | 错误: {str(e)}")
+    
+    print(f"\n最优参数：Alpha={best_alpha}, CV R²={best_score:.4f}")
+    
+    # 训练最终模型
+    final_lasso = Lasso(alpha=best_alpha, random_state=42, max_iter=2000)
+    final_lasso.fit(X_train, y_train)
+    
+    # 模型评估
+    y_train_pred = final_lasso.predict(X_train)
+    y_test_pred = final_lasso.predict(X_test)
+    
+    train_r2 = r2_score(y_train, y_train_pred)
+    test_r2 = r2_score(y_test, y_test_pred)
+    train_rmse = np.sqrt(mean_squared_error(y_train, y_train_pred))
+    test_rmse = np.sqrt(mean_squared_error(y_test, y_test_pred))
+    train_mae = mean_absolute_error(y_train, y_train_pred)
+    test_mae = mean_absolute_error(y_test, y_test_pred)
+    
+    print(f"\n模型性能评估：")
+    print("-" * 60)
+    print(f"{'指标':<15} {'训练集':<12} {'测试集':<12} {'差异':<12}")
+    print("-" * 60)
+    print(f"{'R² 决定系数':<15} {train_r2:>10.4f} {test_r2:>10.4f} {abs(train_r2-test_r2):>10.4f}")
+    print(f"{'RMSE':<15} {train_rmse:>10.2f} {test_rmse:>10.2f} {abs(train_rmse-test_rmse):>10.2f}")
+    print(f"{'MAE':<15} {train_mae:>10.2f} {test_mae:>10.2f} {abs(train_mae-test_mae):>10.2f}")
+    
+    # 过拟合检查
+    if train_r2 - test_r2 > 0.1:
+        print(f"\n⚠️  警告：可能存在过拟合（训练集R²比测试集高{train_r2-test_r2:.3f}）")
+    elif test_r2 > train_r2:
+        print(f"\n✓ 模型泛化良好（测试集R²略高于训练集）")
+    else:
+        print(f"\n✓ 模型性能稳定")
+    
+    # 特征重要性分析
+    coefficients = final_lasso.coef_
+    
+    print(f"\n特征重要性分析：")
+    print("-" * 70)
+    print(f"{'特征变量':<25} {'标准化系数':<15} {'重要性':<12} {'影响方向':<10}")
+    print("-" * 70)
+    
+    # 计算重要性（基于绝对系数值）
+    abs_coefficients = np.abs(coefficients)
+    total_abs_coef = abs_coefficients.sum()
+    
+    feature_importance = []
+    for i, var in enumerate(feature_variables):
+        coef = coefficients[i]
+        abs_coef = abs_coefficients[i]
+        importance = (abs_coef / total_abs_coef * 100) if total_abs_coef > 0 else 0
+        direction = '正向' if coef > 0 else '负向' if coef < 0 else '无影响'
+        
+        feature_importance.append({
+            'feature': var,
+            'coefficient': coef,
+            'abs_coefficient': abs_coef,
+            'importance': importance,
+            'direction': direction
+        })
+        
+        print(f"{var:<25} {coef:>13.4f} {importance:>10.1f}% {direction:<10}")
+    
+    # 按重要性排序
+    feature_importance.sort(key=lambda x: x['importance'], reverse=True)
+    
+    print(f"\n特征重要性排序：")
+    print("-" * 50)
+    for i, feat in enumerate(feature_importance, 1):
+        print(f"  {i}. {feat['feature']}: {feat['importance']:.1f}% ({feat['direction']})")
+    
+    # 敏感性分析：单个特征变化+10%对目标变量的影响
+    print(f"\n" + "="*80)
+    print("敏感性分析：特征变化+10%对有效线索数的影响")
+    print("="*80)
+    
+    # 使用原始特征均值作为基准
+    baseline_features = X.mean().values
+    baseline_features_scaled = scaler.transform(baseline_features.reshape(1, -1))
+    baseline_prediction = final_lasso.predict(baseline_features_scaled)[0]
+    
+    print(f"基准预测值（使用特征均值）：{baseline_prediction:.2f}")
+    print(f"\n各特征+10%变化的影响：")
+    print("-" * 80)
+    print(f"{'特征变量':<25} {'基准值':<12} {'变化后值':<12} {'预测变化':<12} {'影响幅度':<12}")
+    print("-" * 80)
+    
+    sensitivity_results = []
+    
+    for i, var in enumerate(feature_variables):
+        # 创建变化后的特征向量
+        modified_features = baseline_features.copy()
+        original_value = modified_features[i]
+        modified_features[i] = original_value * 1.1  # +10%变化
+        
+        # 标准化并预测
+        modified_features_scaled = scaler.transform(modified_features.reshape(1, -1))
+        modified_prediction = final_lasso.predict(modified_features_scaled)[0]
+        
+        # 计算影响
+        prediction_change = modified_prediction - baseline_prediction
+        impact_percentage = (prediction_change / baseline_prediction * 100) if baseline_prediction != 0 else 0
+        
+        sensitivity_results.append({
+            'feature': var,
+            'baseline_value': original_value,
+            'modified_value': original_value * 1.1,
+            'prediction_change': prediction_change,
+            'impact_percentage': impact_percentage
+        })
+        
+        print(f"{var:<25} {original_value:>10.2f} {original_value*1.1:>10.2f} {prediction_change:>10.2f} {impact_percentage:>10.2f}%")
+    
+    # 按影响幅度排序
+    sensitivity_results.sort(key=lambda x: abs(x['impact_percentage']), reverse=True)
+    
+    print(f"\n敏感性排序（按影响幅度绝对值）：")
+    print("-" * 60)
+    for i, result in enumerate(sensitivity_results, 1):
+        direction = "增加" if result['prediction_change'] > 0 else "减少"
+        print(f"  {i}. {result['feature']}: {direction}{abs(result['prediction_change']):.2f} ({result['impact_percentage']:+.2f}%)")
+    
+    # 综合分析总结
+    print(f"\n" + "="*80)
+    print("综合分析总结")
+    print("="*80)
+    
+    # 模型质量评估
+    if test_r2 >= 0.7:
+        model_quality = "优秀"
+    elif test_r2 >= 0.5:
+        model_quality = "良好"
+    elif test_r2 >= 0.3:
+        model_quality = "一般"
+    else:
+        model_quality = "较差"
+    
+    print(f"\n1. 模型质量评估：{model_quality}")
+    print(f"   - 测试集R²：{test_r2:.3f}")
+    print(f"   - 模型能解释{test_r2*100:.1f}%的有效线索数变异")
+    
+    print(f"\n2. 关键驱动因素（按重要性）：")
+    for i, feat in enumerate(feature_importance[:3], 1):
+        print(f"   {i}. {feat['feature']}: {feat['importance']:.1f}% ({feat['direction']}影响)")
+    
+    print(f"\n3. 敏感性分析关键发现：")
+    most_sensitive = sensitivity_results[0]
+    print(f"   - 最敏感特征：{most_sensitive['feature']}")
+    print(f"   - 该特征+10%变化导致有效线索数{most_sensitive['impact_percentage']:+.1f}%变化")
+    
+    # 实际业务建议
+    print(f"\n4. 业务建议：")
+    
+    # 基于特征重要性和敏感性给出建议
+    top_important = feature_importance[0]
+    top_sensitive = sensitivity_results[0]
+    
+    if top_important['direction'] == '正向':
+        print(f"   - 重点提升{top_important['feature']}，该指标对有效线索数有{top_important['importance']:.0f}%的正向贡献")
+    else:
+        print(f"   - 注意控制{top_important['feature']}，该指标对有效线索数有负向影响")
+    
+    if abs(top_sensitive['impact_percentage']) > 5:
+        print(f"   - {top_sensitive['feature']}变化敏感度高，需要重点监控和管理")
+    
+    # 返回结果
+    results = {
+        'model_performance': {
+            'train_r2': train_r2,
+            'test_r2': test_r2,
+            'train_rmse': train_rmse,
+            'test_rmse': test_rmse,
+            'best_alpha': best_alpha
+        },
+        'feature_importance': feature_importance,
+        'sensitivity_analysis': sensitivity_results,
+        'model_quality': model_quality,
+        'baseline_prediction': baseline_prediction,
+        'data_summary': {
+            'total_samples': len(model_data),
+            'train_samples': len(X_train),
+            'test_samples': len(X_test),
+            'time_range': f"{start_date.strftime('%Y-%m-%d')} 至 {end_date.strftime('%Y-%m-%d')}"
+        }
+    }
+    
+    return results
+
 def funnel_analysis(df):
     """
     漏斗分析：计算预售期小订数到上市期小订留存锁单数的转化率
