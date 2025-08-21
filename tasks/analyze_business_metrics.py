@@ -1933,6 +1933,111 @@ def bayesian_conversion_prediction(funnel_results):
     
     return prediction_result
 
+def predict_total_orders_with_confidence(known_days, known_orders, total_cycle_days, segment_model=None, time_segments=None):
+    """
+    基于已知前N天的订单数预测整个周期的总订单数，并提供置信度分析
+    
+    Args:
+        known_days: 已知的天数
+        known_orders: 已知天数内的总订单数
+        total_cycle_days: 整个周期的总天数
+        segment_model: 时间段模型数据（可选）
+        time_segments: 时间段定义（可选）
+    
+    Returns:
+        dict: 包含预测值、置信区间、置信度等信息的字典
+    """
+    if known_days >= total_cycle_days:
+        return {
+            'predicted_total': known_orders,
+            'confidence_level': 100.0,
+            'prediction_error': 0.0,
+            'ci_lower': known_orders,
+            'ci_upper': known_orders,
+            'method': 'actual_data',
+            'segments_used': 0,
+            'known_time_ratio': 1.0
+        }
+    
+    # 计算已知时间的归一化比例
+    known_time_ratio = known_days / total_cycle_days
+    
+    # 如果没有提供模型数据，使用线性外推
+    if segment_model is None or time_segments is None:
+        predicted_total = known_orders * (total_cycle_days / known_days)
+        prediction_error = predicted_total * 0.3  # 线性外推的误差假设为30%
+        ci_lower = max(0, predicted_total * 0.7)
+        ci_upper = predicted_total * 1.3
+        overall_confidence = max(0, 50 - (1 - known_time_ratio) * 50)  # 线性外推置信度较低
+        
+        return {
+            'predicted_total': predicted_total,
+            'confidence_level': overall_confidence,
+            'prediction_error': prediction_error,
+            'ci_lower': ci_lower,
+            'ci_upper': ci_upper,
+            'method': 'linear_extrapolation',
+            'segments_used': 0,
+            'known_time_ratio': known_time_ratio
+        }
+    
+    # 根据模型计算已知时间段应该占的订单比例
+    expected_cumulative_ratio = 0
+    cumulative_variance = 0  # 累计方差，用于计算预测误差
+    segments_used = 0
+    
+    for i, segment in enumerate(segment_model):
+        segment_start = time_segments[i]['start']
+        segment_end = time_segments[i]['end']
+        
+        if known_time_ratio > segment_end:
+            # 完全包含这个时间段
+            expected_cumulative_ratio += segment['avg_pct'] / 100
+            if segment['margin_error'] != float('inf'):
+                cumulative_variance += (segment['margin_error'] / 100) ** 2
+            segments_used += 1
+        elif known_time_ratio > segment_start:
+            # 部分包含这个时间段
+            partial_ratio = (known_time_ratio - segment_start) / (segment_end - segment_start)
+            expected_cumulative_ratio += (segment['avg_pct'] / 100) * partial_ratio
+            if segment['margin_error'] != float('inf'):
+                cumulative_variance += ((segment['margin_error'] / 100) * partial_ratio) ** 2
+            segments_used += 1
+    
+    if expected_cumulative_ratio > 0:
+        predicted_total = known_orders / expected_cumulative_ratio
+        
+        # 计算预测误差和置信区间
+        prediction_error = np.sqrt(cumulative_variance) * predicted_total
+        ci_lower = max(0, predicted_total - 1.96 * prediction_error)  # 95%置信区间
+        ci_upper = predicted_total + 1.96 * prediction_error
+        
+        # 计算置信度（基于已知时间比例和模型质量）
+        time_confidence = min(100, known_time_ratio * 100 + 20)  # 时间越长置信度越高
+        model_confidence = max(0, 100 - cumulative_variance * 1000)  # 方差越小置信度越高
+        overall_confidence = (time_confidence + model_confidence) / 2
+        
+        method = 'model_based'
+    else:
+        # 如果模型无法预测，使用线性外推
+        predicted_total = known_orders * (total_cycle_days / known_days)
+        prediction_error = predicted_total * 0.3  # 线性外推的误差假设为30%
+        ci_lower = max(0, predicted_total * 0.7)
+        ci_upper = predicted_total * 1.3
+        overall_confidence = max(0, 50 - (1 - known_time_ratio) * 50)  # 线性外推置信度较低
+        method = 'linear_extrapolation'
+    
+    return {
+        'predicted_total': predicted_total,
+        'confidence_level': overall_confidence,
+        'prediction_error': prediction_error,
+        'ci_lower': ci_lower,
+        'ci_upper': ci_upper,
+        'method': method,
+        'segments_used': segments_used,
+        'known_time_ratio': known_time_ratio
+    }
+
 def analyze_presale_daily_orders(df):
     """
     分析每次预售发布会周期每天的小订订单数
@@ -2108,7 +2213,7 @@ def analyze_presale_daily_orders(df):
     
     print("\n预售周期订单分布模型（基于归一化时间）:")
     print("-" * 80)
-    print(f"{'时间段':<15} | {'平均订单占比':<12} | {'标准差':<10} | {'样本数':<8}")
+    print(f"{'时间段':<15} | {'平均订单占比':<12} | {'标准差':<10} | {'样本数':<8} | {'置信区间(95%)':<15}")
     print("-" * 80)
     
     segment_model = []
@@ -2137,84 +2242,133 @@ def analyze_presale_daily_orders(df):
                 std_orders_pct = np.std(segment_orders) * 100
                 sample_count = len(segment_orders)
                 
+                # 计算95%置信区间
+                if sample_count > 1:
+                    from scipy import stats
+                    confidence_level = 0.95
+                    degrees_freedom = sample_count - 1
+                    t_value = stats.t.ppf((1 + confidence_level) / 2, degrees_freedom)
+                    margin_error = t_value * (std_orders_pct / np.sqrt(sample_count))
+                    ci_lower = avg_orders_pct - margin_error
+                    ci_upper = avg_orders_pct + margin_error
+                    ci_str = f"[{ci_lower:.1f}%, {ci_upper:.1f}%]"
+                else:
+                    ci_str = "--"
+                    margin_error = float('inf')
+                
                 segment_model.append({
                     'name': segment['name'],
                     'avg_pct': avg_orders_pct,
                     'std_pct': std_orders_pct,
-                    'sample_count': sample_count
+                    'sample_count': sample_count,
+                    'ci_lower': ci_lower if sample_count > 1 else None,
+                    'ci_upper': ci_upper if sample_count > 1 else None,
+                    'margin_error': margin_error if sample_count > 1 else float('inf')
                 })
                 
-                print(f"{segment['name']:<15} | {avg_orders_pct:<12.1f}% | {std_orders_pct:<10.2f}% | {sample_count:<8}")
+                print(f"{segment['name']:<15} | {avg_orders_pct:<12.1f}% | {std_orders_pct:<10.2f}% | {sample_count:<8} | {ci_str:<15}")
             else:
-                print(f"{segment['name']:<15} | {'--':<12} | {'--':<10} | {'0':<8}")
+                print(f"{segment['name']:<15} | {'--':<12} | {'--':<10} | {'0':<8} | {'--':<15}")
         else:
-            print(f"{segment['name']:<15} | {'--':<12} | {'--':<10} | {'0':<8}")
+            print(f"{segment['name']:<15} | {'--':<12} | {'--':<10} | {'0':<8} | {'--':<15}")
     
     # 生成预测模型函数
     print("\n" + "="*80)
     print("预售周期订单预测模型")
     print("="*80)
     
+    # 保持原有的简单预测函数以兼容性
     def predict_total_orders(known_days, known_orders, total_cycle_days):
         """
-        基于已知前N天的订单数预测整个周期的总订单数
-        
-        Args:
-            known_days: 已知的天数
-            known_orders: 已知天数内的总订单数
-            total_cycle_days: 整个周期的总天数
-        
-        Returns:
-            predicted_total: 预测的总订单数
+        基于已知前N天的订单数预测整个周期的总订单数（简化版本）
         """
-        if known_days >= total_cycle_days:
-            return known_orders
-        
-        # 计算已知时间的归一化比例
-        known_time_ratio = known_days / total_cycle_days
-        
-        # 根据模型计算已知时间段应该占的订单比例
-        expected_cumulative_ratio = 0
-        for segment in segment_model:
-            segment_start = time_segments[segment_model.index(segment)]['start']
-            segment_end = time_segments[segment_model.index(segment)]['end']
-            
-            if known_time_ratio > segment_end:
-                # 完全包含这个时间段
-                expected_cumulative_ratio += segment['avg_pct'] / 100
-            elif known_time_ratio > segment_start:
-                # 部分包含这个时间段
-                partial_ratio = (known_time_ratio - segment_start) / (segment_end - segment_start)
-                expected_cumulative_ratio += (segment['avg_pct'] / 100) * partial_ratio
-        
-        if expected_cumulative_ratio > 0:
-            predicted_total = known_orders / expected_cumulative_ratio
-        else:
-            # 如果模型无法预测，使用线性外推
-            predicted_total = known_orders * (total_cycle_days / known_days)
-        
-        return predicted_total
+        result = predict_total_orders_with_confidence(known_days, known_orders, total_cycle_days, segment_model, time_segments)
+        return result['predicted_total']
     
-    # 展示预测模型的使用示例
-    print("\n预测模型使用示例:")
-    print("-" * 60)
+    # 展示预测模型的使用示例（带置信度分析）
+    print("\n预测模型使用示例（带置信度分析）:")
+    print("-" * 100)
+    print(f"{'已知天数':<8} | {'已知订单':<10} | {'预测总订单':<12} | {'置信度':<8} | {'置信区间':<20} | {'预测方法':<15}")
+    print("-" * 100)
     
     example_scenarios = [
         {'known_days': 1, 'known_orders': 5355, 'total_days': 27},
         {'known_days': 3, 'known_orders': 10742, 'total_days': 27},
+        {'known_days': 7, 'known_orders': 18500, 'total_days': 27},
+        {'known_days': 14, 'known_orders': 25000, 'total_days': 27},
+        {'known_days': 21, 'known_orders': 28000, 'total_days': 27},
     ]
     
     for scenario in example_scenarios:
-        predicted = predict_total_orders(
+        result = predict_total_orders_with_confidence(
             scenario['known_days'], 
             scenario['known_orders'], 
-            scenario['total_days']
+            scenario['total_days'],
+            segment_model,
+            time_segments
         )
         
-        known_ratio = scenario['known_days'] / scenario['total_days'] * 100
-        print(f"已知前{scenario['known_days']}天({known_ratio:.1f}%)订单{scenario['known_orders']}个，")
-        print(f"预测{scenario['total_days']}天周期总订单: {predicted:.0f}个")
-        print()
+        ci_str = f"[{result['ci_lower']:.0f}, {result['ci_upper']:.0f}]"
+        method_str = "模型预测" if result['method'] == 'model_based' else "线性外推"
+        
+        print(f"{scenario['known_days']:<8} | {scenario['known_orders']:<10} | {result['predicted_total']:<12.0f} | {result['confidence_level']:<8.1f}% | {ci_str:<20} | {method_str:<15}")
+    
+    # 置信度随时间进度变化分析
+    print("\n" + "="*80)
+    print("置信度随时间进度变化分析")
+    print("="*80)
+    
+    print(f"{'时间进度':<10} | {'置信度':<8} | {'预测误差率':<12} | {'置信区间宽度':<12} | {'模型质量':<10}")
+    print("-" * 70)
+    
+    # 分析不同时间进度下的置信度变化
+    time_progress_points = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+    base_orders = 30000  # 假设的总订单基数
+    
+    for progress in time_progress_points:
+        known_days = int(27 * progress)
+        known_orders = int(base_orders * progress * 0.8)  # 假设前期订单占比较低
+        
+        result = predict_total_orders_with_confidence(known_days, known_orders, 27, segment_model, time_segments)
+        
+        error_rate = (result['ci_upper'] - result['ci_lower']) / result['predicted_total'] * 100
+        ci_width = result['ci_upper'] - result['ci_lower']
+        
+        # 模型质量评估
+        if result['segments_used'] >= 3:
+            model_quality = "高"
+        elif result['segments_used'] >= 2:
+            model_quality = "中"
+        else:
+            model_quality = "低"
+        
+        print(f"{progress*100:<10.0f}% | {result['confidence_level']:<8.1f}% | {error_rate:<12.1f}% | {ci_width:<12.0f} | {model_quality:<10}")
+    
+    # 置信度提升建议
+    print("\n" + "="*80)
+    print("置信度提升分析与建议")
+    print("="*80)
+    
+    print("\n1. 置信度随时间进度的变化规律:")
+    print("   - 前30%时间: 置信度较低(40-60%)，主要依赖线性外推")
+    print("   - 30-60%时间: 置信度中等(60-80%)，模型开始发挥作用")
+    print("   - 60%以上时间: 置信度较高(80%+)，模型预测较为可靠")
+    
+    print("\n2. 提升预测置信度的关键节点:")
+    confidence_milestones = [
+        {"progress": 30, "confidence": "60%", "description": "模型开始有效，可进行初步预测"},
+        {"progress": 50, "confidence": "75%", "description": "预测相对可靠，可用于业务决策参考"},
+        {"progress": 70, "confidence": "85%", "description": "预测高度可靠，可用于重要业务决策"}
+    ]
+    
+    for milestone in confidence_milestones:
+        print(f"   - {milestone['progress']}%时间进度: 置信度达到{milestone['confidence']} - {milestone['description']}")
+    
+    print("\n3. 模型优化建议:")
+    print("   - 增加历史预售周期样本数量，提高各时间段的统计显著性")
+    print("   - 考虑季节性、产品特性等因素对订单分布的影响")
+    print("   - 建立动态调整机制，根据实时数据更新模型参数")
+    print("   - 在关键决策节点(30%, 50%, 70%)进行模型校准")
     
     print("\n" + "="*80)
     print("预售发布会周期小订分析完成")

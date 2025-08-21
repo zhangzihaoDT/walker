@@ -182,6 +182,16 @@ def analyze_by_demographics(df):
     print("人口统计学特征分析")
     print("="*60)
     
+    # 处理锁单指标列的数据类型问题
+    if 'Has_Intention_Payment' in df.columns:
+        if df['Has_Intention_Payment'].dtype.name == 'category':
+            # 将分类数据转换为数值，假设 '真' 表示 1，其他表示 0
+            df = df.copy()
+            df['Has_Intention_Payment'] = df['Has_Intention_Payment'].astype(str).map({
+                '真': 1, 'True': 1, 'true': 1, '1': 1,
+                '假': 0, 'False': 0, 'false': 0, '0': 0
+            }).fillna(0).astype(float)
+    
     # 年龄分析
     print("\n1. 年龄分析:")
     # 创建年龄分组
@@ -191,9 +201,12 @@ def analyze_by_demographics(df):
                             include_lowest=True)
     
     age_analysis = df.groupby(['age_group', '车型分组'], observed=False).size().unstack(fill_value=0)
+    # 检查锁单指标列是否存在，优先使用 has_lock，如果不存在则使用 Has_Intention_Payment
+    lock_column = 'has_lock' if 'has_lock' in df.columns else 'Has_Intention_Payment'
+    
     age_summary = df.groupby('age_group', observed=False).agg({
         'Order Number': 'count',
-        'has_lock': 'mean'
+        lock_column: 'mean'
     }).round(4)
     age_summary.columns = ['订单数', '锁单率']
     age_summary['锁单率'] = age_summary['锁单率'] * 100
@@ -210,12 +223,71 @@ def analyze_by_demographics(df):
     print("\n年龄组×车型占比表(%):")
     print(age_vehicle_pct.round(2))
     
+    # 车型平均年龄对比分析（筛选18-70岁数据，排除异常值）
+    print("\n3. 车型平均年龄对比分析（18-70岁）:")
+    print("-" * 50)
+    
+    # 筛选18-70岁的数据，排除异常值
+    age_filtered_df = df[(df['buyer_age'] >= 18) & (df['buyer_age'] <= 70)]
+    
+    if len(age_filtered_df) > 0:
+        # 计算每个车型的平均年龄
+        vehicle_age_stats = age_filtered_df.groupby('车型分组').agg({
+            'buyer_age': ['mean', 'median', 'std', 'count']
+        }).round(2)
+        
+        # 重命名列
+        vehicle_age_stats.columns = ['平均年龄', '中位数年龄', '年龄标准差', '样本数量']
+        
+        # 按平均年龄排序
+        vehicle_age_stats = vehicle_age_stats.sort_values('平均年龄', ascending=False)
+        
+        print(f"筛选条件: 18-70岁（原始数据{len(df)}条，筛选后{len(age_filtered_df)}条）")
+        print("\n各车型年龄统计:")
+        print(vehicle_age_stats)
+        
+        # 计算整体平均年龄
+        overall_mean_age = age_filtered_df['buyer_age'].mean()
+        print(f"\n整体平均年龄: {overall_mean_age:.2f}岁")
+        
+        # 分析各车型与整体平均年龄的差异
+        print("\n各车型与整体平均年龄差异:")
+        age_diff_analysis = pd.DataFrame({
+            '车型': vehicle_age_stats.index,
+            '平均年龄': vehicle_age_stats['平均年龄'],
+            '与整体差异': (vehicle_age_stats['平均年龄'] - overall_mean_age).round(2),
+            '样本数量': vehicle_age_stats['样本数量']
+        })
+        
+        for _, row in age_diff_analysis.iterrows():
+            diff = row['与整体差异']
+            if diff > 0:
+                trend = f"高于整体{diff:.2f}岁"
+            elif diff < 0:
+                trend = f"低于整体{abs(diff):.2f}岁"
+            else:
+                trend = "与整体持平"
+            print(f"{row['车型']}: {row['平均年龄']:.2f}岁 ({trend}, 样本{row['样本数量']}个)")
+        
+        # 找出年龄最高和最低的车型
+        highest_age_model = vehicle_age_stats.index[0]
+        lowest_age_model = vehicle_age_stats.index[-1]
+        age_gap = vehicle_age_stats.loc[highest_age_model, '平均年龄'] - vehicle_age_stats.loc[lowest_age_model, '平均年龄']
+        
+        print(f"\n年龄差异总结:")
+        print(f"• 平均年龄最高车型: {highest_age_model} ({vehicle_age_stats.loc[highest_age_model, '平均年龄']:.2f}岁)")
+        print(f"• 平均年龄最低车型: {lowest_age_model} ({vehicle_age_stats.loc[lowest_age_model, '平均年龄']:.2f}岁)")
+        print(f"• 车型间年龄差距: {age_gap:.2f}岁")
+        
+    else:
+        print("警告: 筛选18-70岁后无有效数据")
+    
     # 性别分析
-    print("\n2. 性别分析:")
+    print("\n4. 性别分析:")
     gender_analysis = df.groupby(['order_gender', '车型分组'], observed=False).size().unstack(fill_value=0)
     gender_summary = df.groupby('order_gender', observed=False).agg({
         'Order Number': 'count',
-        'has_lock': 'mean'
+        lock_column: 'mean'
     }).round(4)
     gender_summary.columns = ['订单数', '锁单率']
     gender_summary['锁单率'] = gender_summary['锁单率'] * 100
@@ -312,8 +384,8 @@ def analyze_by_demographics(df):
         print(f"其他车型订单数: {other_total:,} ({other_total/total_orders*100:.2f}%)")
         
         # 锁单率对比
-        cm2_lock_rate = cm2_data['has_lock'].mean() * 100
-        other_lock_rate = other_data['has_lock'].mean() * 100
+        cm2_lock_rate = cm2_data[lock_column].mean() * 100
+        other_lock_rate = other_data[lock_column].mean() * 100
         
         print(f"\nCM2车型锁单率: {cm2_lock_rate:.2f}%")
         print(f"其他车型锁单率: {other_lock_rate:.2f}%")
