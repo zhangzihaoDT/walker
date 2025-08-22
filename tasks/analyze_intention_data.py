@@ -2011,12 +2011,440 @@ def analyze_leads_conversion_rate(df):
         print(f"\n错误: 线索转化率分析失败 - {e}")
         return {}
 
-def comprehensive_analysis(df):
+def _write_to_report(output_lines, report_file_path):
+    """
+    将输出内容写入报告文件
+    
+    Args:
+        output_lines (list): 输出内容列表
+        report_file_path (str): 报告文件路径
+    """
+    try:
+        # 检查文件是否存在，如果不存在则创建
+        if not Path(report_file_path).exists():
+            with open(report_file_path, 'w', encoding='utf-8') as f:
+                f.write("# 意向数据分析报告\n\n")
+        
+        # 读取现有内容
+        with open(report_file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # 检查是否已存在模块10的内容
+        module_10_marker = "## 10. 纯电增程比例推断分析"
+        
+        if module_10_marker in content:
+            # 如果已存在，找到模块10的开始位置
+            start_pos = content.find(module_10_marker)
+            
+            # 找到下一个模块的开始位置（## 11.）或文件结尾
+            next_module_pos = content.find("\n## 11.", start_pos)
+            if next_module_pos == -1:
+                # 如果没有下一个模块，检查是否有其他## 开头的内容
+                remaining_content = content[start_pos:]
+                next_section = remaining_content.find("\n## ", len(module_10_marker))
+                if next_section != -1:
+                    next_module_pos = start_pos + next_section
+                else:
+                    # 模块10是最后一个模块，替换到文件末尾
+                    next_module_pos = len(content)
+            
+            # 替换模块10的内容
+            before_module = content[:start_pos]
+            after_module = content[next_module_pos:] if next_module_pos < len(content) else ""
+            
+            new_module_content = f"{module_10_marker}\n\n```\n"
+            for line in output_lines:
+                new_module_content += line + "\n"
+            new_module_content += "```\n"
+            
+            new_content = before_module + new_module_content + after_module
+        else:
+            # 如果不存在，追加到文件末尾
+            new_content = content + f"\n\n{module_10_marker}\n\n```\n"
+            for line in output_lines:
+                new_content += line + "\n"
+            new_content += "```\n"
+        
+        # 写入更新后的内容
+        with open(report_file_path, 'w', encoding='utf-8') as f:
+            f.write(new_content)
+            
+        print(f"模块10分析结果已更新到: {report_file_path}")
+        
+    except Exception as e:
+        print(f"写入报告文件失败: {e}")
+
+def analyze_pure_electric_ratio_inference(df, report_file_path=None):
+    """
+    分析模块10：纯电增程比例推断
+    基于CM1车型和CM2车型的用户特征推算CM2的纯电vs增程占比
+    
+    Args:
+        df (DataFrame): 原始数据
+        report_file_path (str): 报告文件路径，如果提供则写入文件而不是打印
+    
+    Returns:
+        dict: 推断结果
+    """
+    # 初始化输出内容列表
+    output_lines = []
+    
+    def add_output(text):
+        """添加输出内容"""
+        if report_file_path:
+            output_lines.append(text)
+        else:
+            print(text)
+    
+    add_output("\n" + "="*60)
+    add_output("分析模块10：纯电增程比例推断")
+    add_output("="*60)
+    
+    try:
+        # 导入必要的库
+        from sklearn.preprocessing import OneHotEncoder, StandardScaler
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.mixture import GaussianMixture
+        from sklearn.metrics import silhouette_score
+        import warnings
+        warnings.filterwarnings('ignore')
+        
+        # 1. 数据筛选和预处理
+        add_output("\n1. 数据筛选和预处理")
+        add_output("-" * 40)
+        
+        # 筛选CM1和CM2车型，且有Intention_Payment_Time的数据
+        cm_data = df[
+            (df['车型分组'].isin(['CM1', 'CM2'])) & 
+            (df['Intention_Payment_Time'].notna())
+        ].copy()
+        
+        if len(cm_data) == 0:
+            add_output("警告: 未找到CM1或CM2车型的意向金数据")
+            if report_file_path:
+                _write_to_report(output_lines, report_file_path)
+            return {}
+        
+        add_output(f"筛选后数据量: {len(cm_data)}条")
+        add_output(f"CM1车型数量: {len(cm_data[cm_data['车型分组'] == 'CM1'])}条")
+        add_output(f"CM2车型数量: {len(cm_data[cm_data['车型分组'] == 'CM2'])}条")
+        
+        # 提取关键特征字段
+        feature_cols = ['buyer_age', 'order_gender', 'License City', 'Parent Region Name']
+        
+        # 检查字段是否存在
+        missing_cols = [col for col in feature_cols if col not in cm_data.columns]
+        if missing_cols:
+            add_output(f"警告: 缺少字段 {missing_cols}")
+            feature_cols = [col for col in feature_cols if col in cm_data.columns]
+        
+        if not feature_cols:
+            add_output("错误: 没有可用的特征字段")
+            if report_file_path:
+                _write_to_report(output_lines, report_file_path)
+            return {}
+        
+        add_output(f"使用特征字段: {feature_cols}")
+        
+        # 数据清洗
+        for col in feature_cols:
+            if col == 'buyer_age':
+                # 年龄数据清洗：保留18-80岁的合理范围
+                cm_data = cm_data[
+                    (cm_data[col].notna()) & 
+                    (cm_data[col] >= 18) & 
+                    (cm_data[col] <= 80)
+                ]
+            else:
+                # 其他字段去除空值
+                cm_data = cm_data[cm_data[col].notna()]
+        
+        add_output(f"数据清洗后数量: {len(cm_data)}条")
+        
+        if len(cm_data) < 50:  # 最少需要50条数据
+            add_output("警告: 清洗后数据量过少，无法进行可靠推断")
+            if report_file_path:
+                _write_to_report(output_lines, report_file_path)
+            return {}
+        
+        # 分离CM1和CM2数据
+        cm1_data = cm_data[cm_data['车型分组'] == 'CM1'].copy()
+        cm2_data = cm_data[cm_data['车型分组'] == 'CM2'].copy()
+        
+        add_output(f"\n最终用于分析的数据:")
+        add_output(f"CM1车型: {len(cm1_data)}条")
+        add_output(f"CM2车型: {len(cm2_data)}条")
+        
+        if len(cm1_data) == 0 or len(cm2_data) == 0:
+            add_output("错误: CM1或CM2车型数据为空")
+            if report_file_path:
+                _write_to_report(output_lines, report_file_path)
+            return {}
+        
+        # 2. 特征工程
+        add_output("\n2. 特征工程")
+        add_output("-" * 40)
+        
+        # 合并数据用于特征编码
+        all_data = pd.concat([cm1_data, cm2_data], ignore_index=True)
+        
+        # 分类特征编码
+        categorical_features = [col for col in feature_cols if col != 'buyer_age']
+        numerical_features = ['buyer_age'] if 'buyer_age' in feature_cols else []
+        
+        # 处理分类特征
+        if categorical_features:
+            # 限制分类特征的唯一值数量，避免维度过高
+            for col in categorical_features:
+                value_counts = all_data[col].value_counts()
+                # 保留前20个最常见的值，其他归为'其他'
+                top_values = value_counts.head(20).index
+                all_data[col] = all_data[col].apply(
+                    lambda x: x if x in top_values else '其他'
+                )
+            
+            encoder = OneHotEncoder(sparse_output=False, drop='first', handle_unknown='ignore')
+            encoded_features = encoder.fit_transform(all_data[categorical_features])
+            
+            # 获取特征名称
+            feature_names = encoder.get_feature_names_out(categorical_features)
+            encoded_df = pd.DataFrame(encoded_features, columns=feature_names)
+        else:
+            encoded_df = pd.DataFrame()
+        
+        # 处理数值特征
+        if numerical_features:
+            scaler = StandardScaler()
+            scaled_features = scaler.fit_transform(all_data[numerical_features])
+            scaled_df = pd.DataFrame(scaled_features, columns=numerical_features)
+        else:
+            scaled_df = pd.DataFrame()
+        
+        # 合并所有特征
+        if not encoded_df.empty and not scaled_df.empty:
+            X_all = np.hstack([encoded_df.values, scaled_df.values])
+            all_feature_names = list(encoded_df.columns) + list(scaled_df.columns)
+        elif not encoded_df.empty:
+            X_all = encoded_df.values
+            all_feature_names = list(encoded_df.columns)
+        elif not scaled_df.empty:
+            X_all = scaled_df.values
+            all_feature_names = list(scaled_df.columns)
+        else:
+            add_output("错误: 没有可用的特征")
+            if report_file_path:
+                _write_to_report(output_lines, report_file_path)
+            return {}
+        
+        # 分离CM1和CM2的特征
+        X_cm1 = X_all[:len(cm1_data)]
+        X_cm2 = X_all[len(cm1_data):]
+        
+        add_output(f"特征维度: {X_all.shape[1]}")
+        add_output(f"特征名称: {all_feature_names[:5]}..." if len(all_feature_names) > 5 else f"特征名称: {all_feature_names}")
+        
+        # 3. 方法1：分类器预测概率法（修正版）
+        add_output("\n3. 方法1：分类器预测概率法")
+        add_output("-" * 40)
+        
+        try:
+            # 创建训练数据：CM1为纯电（标签=1），CM2为混合（标签=0）
+            X_train = np.vstack([X_cm1, X_cm2])
+            y_train = np.hstack([np.ones(len(cm1_data)), np.zeros(len(cm2_data))])
+            
+            # 训练逻辑回归分类器
+            clf = LogisticRegression(random_state=42, max_iter=1000)
+            clf.fit(X_train, y_train)
+            
+            # 对CM2用户预测纯电概率
+            cm2_pure_prob = clf.predict_proba(X_cm2)[:, 1]
+            
+            # 计算CM2纯电占比
+            method1_pure_ratio = cm2_pure_prob.mean()
+            method1_range_ratio = 1 - method1_pure_ratio
+            
+            add_output(f"CM2纯电占比（分类器法）: {method1_pure_ratio:.2%}")
+            add_output(f"CM2增程占比（分类器法）: {method1_range_ratio:.2%}")
+            
+        except Exception as e:
+            add_output(f"分类器法失败: {e}")
+            method1_pure_ratio = None
+            method1_range_ratio = None
+            clf = None
+        
+        # 4. 方法2：EM混合模型法
+        add_output("\n4. 方法2：EM混合模型法")
+        add_output("-" * 40)
+        
+        try:
+            # 使用高斯混合模型拟合CM2数据
+            # 假设CM2包含两个组分：纯电和增程
+            gmm = GaussianMixture(n_components=2, random_state=42, max_iter=100)
+            gmm.fit(X_cm2)
+            
+            # 预测每个CM2用户属于哪个组分
+            cm2_labels = gmm.predict(X_cm2)
+            cm2_proba = gmm.predict_proba(X_cm2)
+            
+            # 计算CM1用户在两个组分上的概率
+            cm1_proba = gmm.predict_proba(X_cm1)
+            
+            # 找出更接近CM1的组分（假设为纯电组分）
+            cm1_mean_proba = cm1_proba.mean(axis=0)
+            pure_component = np.argmax(cm1_mean_proba)
+            
+            # 计算CM2纯电占比
+            method2_pure_ratio = cm2_proba[:, pure_component].mean()
+            method2_range_ratio = 1 - method2_pure_ratio
+            
+            add_output(f"CM2纯电占比（EM混合模型法）: {method2_pure_ratio:.2%}")
+            add_output(f"CM2增程占比（EM混合模型法）: {method2_range_ratio:.2%}")
+            
+            # 计算模型质量指标
+            silhouette_avg = silhouette_score(X_cm2, cm2_labels)
+            add_output(f"聚类质量（轮廓系数）: {silhouette_avg:.3f}")
+            
+        except Exception as e:
+            add_output(f"EM混合模型法失败: {e}")
+            method2_pure_ratio = None
+            method2_range_ratio = None
+        
+        # 5. 方法3：分布匹配法
+        add_output("\n5. 方法3：分布匹配法")
+        add_output("-" * 40)
+        
+        try:
+            # 计算CM1和CM2在各个特征上的分布差异
+            from scipy.stats import wasserstein_distance
+            
+            if clf is not None:
+                # 计算特征重要性（基于分类器的系数）
+                feature_importance = np.abs(clf.coef_[0])
+            else:
+                # 如果分类器失败，使用均等权重
+                feature_importance = np.ones(X_all.shape[1])
+            
+            # 计算加权分布距离
+            weighted_distances = []
+            for i in range(X_all.shape[1]):
+                if feature_importance[i] > 0:  # 只考虑重要特征
+                    dist = wasserstein_distance(X_cm1[:, i], X_cm2[:, i])
+                    weighted_distances.append(dist * feature_importance[i])
+            
+            avg_distance = np.mean(weighted_distances) if weighted_distances else 0
+            
+            # 基于距离估算纯电比例（距离越小，相似度越高，纯电比例越高）
+            # 使用sigmoid函数将距离映射到[0,1]区间
+            method3_pure_ratio = 1 / (1 + np.exp(avg_distance * 2))  # 调整系数
+            method3_range_ratio = 1 - method3_pure_ratio
+            
+            add_output(f"CM2纯电占比（分布匹配法）: {method3_pure_ratio:.2%}")
+            add_output(f"CM2增程占比（分布匹配法）: {method3_range_ratio:.2%}")
+            add_output(f"平均特征距离: {avg_distance:.3f}")
+            
+        except Exception as e:
+            add_output(f"分布匹配法失败: {e}")
+            method3_pure_ratio = None
+            method3_range_ratio = None
+        
+        # 6. 综合结果
+        add_output("\n6. 综合推断结果")
+        add_output("=" * 40)
+        
+        valid_methods = []
+        pure_ratios = []
+        
+        if method1_pure_ratio is not None:
+            valid_methods.append("分类器法")
+            pure_ratios.append(method1_pure_ratio)
+        
+        if method2_pure_ratio is not None:
+            valid_methods.append("EM混合模型法")
+            pure_ratios.append(method2_pure_ratio)
+        
+        if method3_pure_ratio is not None:
+            valid_methods.append("分布匹配法")
+            pure_ratios.append(method3_pure_ratio)
+        
+        if pure_ratios:
+            # 计算平均值和标准差
+            mean_pure_ratio = np.mean(pure_ratios)
+            std_pure_ratio = np.std(pure_ratios)
+            mean_range_ratio = 1 - mean_pure_ratio
+            
+            add_output(f"\n使用方法: {', '.join(valid_methods)}")
+            add_output(f"\n最终推断结果:")
+            add_output(f"CM2纯电占比: {mean_pure_ratio:.2%} (±{std_pure_ratio:.2%})")
+            add_output(f"CM2增程占比: {mean_range_ratio:.2%} (±{std_pure_ratio:.2%})")
+            
+            # 置信度评估
+            confidence = "高" if std_pure_ratio < 0.1 else "中" if std_pure_ratio < 0.2 else "低"
+            add_output(f"推断置信度: {confidence}")
+            
+            # 详细结果表
+            results_df = pd.DataFrame({
+                '方法': valid_methods,
+                '纯电占比': [f"{ratio:.2%}" for ratio in pure_ratios],
+                '增程占比': [f"{1-ratio:.2%}" for ratio in pure_ratios]
+            })
+            
+            add_output("\n各方法详细结果:")
+            add_output(results_df.to_string(index=False))
+            
+        else:
+            add_output("错误: 所有推断方法都失败了")
+            mean_pure_ratio = None
+            mean_range_ratio = None
+            std_pure_ratio = None
+        
+        # 7. 特征重要性分析
+        add_output("\n7. 特征重要性分析")
+        add_output("-" * 40)
+        
+        if 'clf' in locals():
+            # 获取特征重要性
+            importance_df = pd.DataFrame({
+                '特征': all_feature_names,
+                '重要性': np.abs(clf.coef_[0])
+            }).sort_values('重要性', ascending=False)
+            
+            add_output("\nTOP10重要特征:")
+            add_output(importance_df.head(10).to_string(index=False))
+        
+        # 写入报告文件
+        if report_file_path:
+            _write_to_report(output_lines, report_file_path)
+            
+        return {
+            'method1_pure_ratio': method1_pure_ratio,
+            'method1_range_ratio': method1_range_ratio,
+            'method2_pure_ratio': method2_pure_ratio,
+            'method2_range_ratio': method2_range_ratio,
+            'method3_pure_ratio': method3_pure_ratio,
+            'method3_range_ratio': method3_range_ratio,
+            'final_pure_ratio': mean_pure_ratio,
+            'final_range_ratio': mean_range_ratio,
+            'confidence_std': std_pure_ratio,
+            'cm1_sample_size': len(cm1_data),
+            'cm2_sample_size': len(cm2_data),
+            'feature_importance': importance_df if 'importance_df' in locals() else None
+        }
+            
+    except Exception as e:
+        add_output(f"\n错误: 纯电增程比例推断失败 - {e}")
+        import traceback
+        traceback.print_exc()
+        if report_file_path:
+            _write_to_report(output_lines, report_file_path)
+        return {}
+
+def comprehensive_analysis(df, report_file_path=None):
     """
     综合分析函数
     
     Args:
         df (DataFrame): 原始数据
+        report_file_path (str): 报告文件路径
     """
     # 1. 计算锁单率指标
     df = calculate_lock_rate_indicator(df)
@@ -2042,6 +2470,9 @@ def comprehensive_analysis(df):
     # 8. 线索转化率分析
     conversion_analysis = analyze_leads_conversion_rate(df)
     
+    # 9. 纯电增程比例推断分析
+    pure_electric_analysis = analyze_pure_electric_ratio_inference(df, report_file_path)
+    
     return {
         'vehicle_analysis': vehicle_analysis,
         'demographics_analysis': demographics_analysis,
@@ -2049,7 +2480,8 @@ def comprehensive_analysis(df):
         'channel_analysis': channel_analysis,
         'date_features_analysis': date_features_analysis,
         'hour_features_analysis': hour_features_analysis,
-        'conversion_analysis': conversion_analysis
+        'conversion_analysis': conversion_analysis,
+        'pure_electric_analysis': pure_electric_analysis
     }
 
 def main():
@@ -2058,6 +2490,7 @@ def main():
     """
     # 文件路径
     file_path = "/Users/zihao_/Documents/github/W33_utils_3/data/intention_order_analysis.parquet"
+    report_file_path = "/Users/zihao_/Documents/github/W33_utils_3/tasks/intention_analysis_report.md"
     
     # 检查文件是否存在
     if not Path(file_path).exists():
@@ -2069,9 +2502,10 @@ def main():
     
     if df is not None:
         # 进行综合分析
-        df_analyzed = comprehensive_analysis(df)
+        df_analyzed = comprehensive_analysis(df, report_file_path)
         print("\n" + "="*60)
         print("所有分析完成！")
+        print(f"模块10分析结果已写入: {report_file_path}")
         print("="*60)
     else:
         print("\n分析失败！")
