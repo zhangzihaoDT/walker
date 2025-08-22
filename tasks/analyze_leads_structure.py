@@ -826,6 +826,98 @@ def module_three_normalize_analysis(leads_df, orders_df):
         import traceback
         traceback.print_exc()
 
+def generate_comparison_tables(f, normalized_df):
+    """
+    生成不同车型按时间进度的对比表格
+    """
+    # 获取所有进度点和车型
+    progress_points = sorted(normalized_df['进度(%)'].unique())
+    models = sorted(normalized_df['车型'].unique())
+    
+    # 1. 转化率对比表格
+    f.write("\n### 不同车型按时间进度的转化率对比\n\n")
+    f.write("| 进度(%) |")
+    for model in models:
+        f.write(f" {model} |")
+    f.write("\n|---------|")
+    for _ in models:
+        f.write("---------|")
+    f.write("\n")
+    
+    for progress in progress_points:
+        f.write(f"| {progress}% |")
+        for model in models:
+            model_data = normalized_df[(normalized_df['车型'] == model) & (normalized_df['进度(%)'] == progress)]
+            if len(model_data) > 0:
+                conversion_rate = model_data['转化率(%)'].iloc[0]
+                f.write(f" {conversion_rate}% |")
+            else:
+                f.write(" - |")
+        f.write("\n")
+    
+    # 2. 累计线索数对比表格
+    f.write("\n### 不同车型按时间进度的累计线索数对比\n\n")
+    f.write("| 进度(%) |")
+    for model in models:
+        f.write(f" {model} |")
+    f.write("\n|---------|")
+    for _ in models:
+        f.write("---------|")
+    f.write("\n")
+    
+    for progress in progress_points:
+        f.write(f"| {progress}% |")
+        for model in models:
+            model_data = normalized_df[(normalized_df['车型'] == model) & (normalized_df['进度(%)'] == progress)]
+            if len(model_data) > 0:
+                leads_count = model_data['累计线索数'].iloc[0]
+                f.write(f" {leads_count:,} |")
+            else:
+                f.write(" - |")
+        f.write("\n")
+    
+    # 3. 累计小订数对比表格
+    f.write("\n### 不同车型按时间进度的累计小订数对比\n\n")
+    f.write("| 进度(%) |")
+    for model in models:
+        f.write(f" {model} |")
+    f.write("\n|---------|")
+    for _ in models:
+        f.write("---------|")
+    f.write("\n")
+    
+    for progress in progress_points:
+        f.write(f"| {progress}% |")
+        for model in models:
+            model_data = normalized_df[(normalized_df['车型'] == model) & (normalized_df['进度(%)'] == progress)]
+            if len(model_data) > 0:
+                orders_count = model_data['累计小订数'].iloc[0]
+                f.write(f" {orders_count:,} |")
+            else:
+                f.write(" - |")
+        f.write("\n")
+    
+    # 4. 小订比值对比表格
+    f.write("\n### 不同车型按时间进度的小订比值对比\n\n")
+    f.write("| 进度(%) |")
+    for model in models:
+        f.write(f" {model} |")
+    f.write("\n|---------|")
+    for _ in models:
+        f.write("---------|")
+    f.write("\n")
+    
+    for progress in progress_points:
+        f.write(f"| {progress}% |")
+        for model in models:
+            model_data = normalized_df[(normalized_df['车型'] == model) & (normalized_df['进度(%)'] == progress)]
+            if len(model_data) > 0:
+                order_ratio = model_data['小订比值(%)'].iloc[0]
+                f.write(f" {order_ratio}% |")
+            else:
+                f.write(" - |")
+        f.write("\n")
+
 def generate_updated_report(normalized_df, cm2_analysis_results, launch_analysis_results):
     """
     生成更新的综合分析报告
@@ -861,6 +953,9 @@ def generate_updated_report(normalized_df, cm2_analysis_results, launch_analysis
         
         for _, row in normalized_df.iterrows():
             f.write(f"| {row['车型']} | {row['进度(%)']} | {row['进度天数']} | {row['进度日期']} | {row['累计线索数']:,} | {row['累计小订数']:,} | {row['累计总小订数']:,} | {row['转化率(%)']} | {row['小订比值(%)']} |\n")
+        
+        # 生成对比表格
+        generate_comparison_tables(f, normalized_df)
         
         # CM2对比分析
         f.write("\n### CM2 vs 其他车型表现对比\n\n")
@@ -932,10 +1027,575 @@ def generate_updated_report(normalized_df, cm2_analysis_results, launch_analysis
     print(f"\n综合报告已更新并保存到: {report_path}")
 
 # ============================================================================
-# 报告生成模块
+# 模块四：线索-小订时间间隔分析模块
 # ============================================================================
 
-def generate_comprehensive_report(module_two_results=None, module_three_results=None, leads_info=None, orders_info=None):
+def module_four_time_interval_analysis(orders_df):
+    """
+    模块四：线索-小订时间间隔分析模块
+    计算每个Order Number的线索-小订时间间隔（first_assign_time和Intention_Payment_Time的差值）
+    按车型分组统计在预售周期内的时间间隔统计指标
+    """
+    if orders_df is None or orders_df.empty:
+        print("错误: 订单数据加载失败，无法执行模块四分析")
+        return None
+    
+    print("\n" + "="*80)
+    print("模块四：线索-小订时间间隔分析模块")
+    print("="*80)
+    
+    # 定义各车型预售时间范围
+    presale_periods = {
+        'CM0': {'start': '2023-08-25', 'end': '2023-10-12'},
+        'DM0': {'start': '2024-04-08', 'end': '2024-05-13'},
+        'CM1': {'start': '2024-08-30', 'end': '2024-09-26'},
+        'CM2': {'start': '2025-08-15', 'end': '2025-09-10'},
+        'DM1': {'start': '2025-04-18', 'end': '2025-05-13'}
+    }
+    
+    try:
+        # 数据预处理
+        print("\n" + "="*60)
+        print("数据预处理")
+        print("="*60)
+        
+        # 创建数据副本
+        orders_work_df = orders_df.copy()
+        
+        # 检查必要字段
+        required_fields = ['first_assign_time', 'Intention_Payment_Time', 'Order Number']
+        missing_fields = [field for field in required_fields if field not in orders_work_df.columns]
+        
+        if missing_fields:
+            print(f"错误: 缺少必要字段: {missing_fields}")
+            print(f"可用字段: {list(orders_work_df.columns)}")
+            return None
+        
+        # 处理日期字段
+        orders_work_df['first_assign_time'] = pd.to_datetime(orders_work_df['first_assign_time'])
+        orders_work_df['Intention_Payment_Time'] = pd.to_datetime(orders_work_df['Intention_Payment_Time'])
+        
+        # 计算时间间隔（天数）
+        orders_work_df['time_interval_days'] = (
+            orders_work_df['Intention_Payment_Time'] - orders_work_df['first_assign_time']
+        ).dt.days
+        
+        # 过滤掉无效的时间间隔（负值或空值）
+        valid_orders = orders_work_df.dropna(subset=['time_interval_days'])
+        valid_orders = valid_orders[valid_orders['time_interval_days'] >= 0]
+        
+        print(f"有效订单数据: {len(valid_orders)} 条")
+        print(f"原始订单数据: {len(orders_work_df)} 条")
+        print(f"数据有效率: {len(valid_orders)/len(orders_work_df)*100:.2f}%")
+        
+        # 按车型和预售周期分析
+        print("\n" + "="*60)
+        print("各车型预售期时间间隔分析")
+        print("="*60)
+        
+        results = []
+        
+        for model, period in presale_periods.items():
+            print(f"\n分析车型: {model}")
+            print(f"预售期间: {period['start']} 至 {period['end']}")
+            
+            start_date = pd.to_datetime(period['start'])
+            end_date = pd.to_datetime(period['end'])
+            
+            # 筛选该车型在预售期间的订单（基于Intention_Payment_Time）
+            if 'Model' in valid_orders.columns:
+                model_orders = valid_orders[
+                    (valid_orders['Model'] == model) &
+                    (valid_orders['Intention_Payment_Time'] >= start_date) &
+                    (valid_orders['Intention_Payment_Time'] <= end_date)
+                ]
+            else:
+                # 如果没有车型字段，按时间筛选所有订单
+                model_orders = valid_orders[
+                    (valid_orders['Intention_Payment_Time'] >= start_date) &
+                    (valid_orders['Intention_Payment_Time'] <= end_date)
+                ]
+                print(f"  警告: 未找到'Model'字段，使用所有订单数据")
+            
+            if len(model_orders) == 0:
+                print(f"  该车型在预售期间无有效订单数据")
+                result = {
+                    '车型': model,
+                    '预售开始日期': period['start'],
+                    '预售结束日期': period['end'],
+                    '订单数量': 0,
+                    '平均时间间隔(天)': 0,
+                    '最大时间间隔(天)': 0,
+                    '中位数时间间隔(天)': 0,
+                    '标准差(天)': 0
+                }
+                results.append(result)
+                continue
+            
+            # 计算统计指标
+            time_intervals = model_orders['time_interval_days']
+            
+            avg_interval = time_intervals.mean()
+            max_interval = time_intervals.max()
+            median_interval = time_intervals.median()
+            std_interval = time_intervals.std()
+            
+            result = {
+                '车型': model,
+                '预售开始日期': period['start'],
+                '预售结束日期': period['end'],
+                '订单数量': len(model_orders),
+                '平均时间间隔(天)': round(avg_interval, 2),
+                '最大时间间隔(天)': int(max_interval),
+                '中位数时间间隔(天)': round(median_interval, 2),
+                '标准差(天)': round(std_interval, 2)
+            }
+            
+            results.append(result)
+            
+            print(f"  订单数量: {len(model_orders):,}")
+            print(f"  平均时间间隔: {avg_interval:.2f} 天")
+            print(f"  最大时间间隔: {max_interval} 天")
+            print(f"  中位数时间间隔: {median_interval:.2f} 天")
+            print(f"  标准差: {std_interval:.2f} 天")
+            
+            # 显示时间间隔分布
+            print(f"  时间间隔分布:")
+            interval_bins = [0, 7, 14, 30, 60, 90, float('inf')]
+            interval_labels = ['0-7天', '8-14天', '15-30天', '31-60天', '61-90天', '90天以上']
+            
+            for i, (start_bin, end_bin, label) in enumerate(zip(interval_bins[:-1], interval_bins[1:], interval_labels)):
+                if end_bin == float('inf'):
+                    count = len(time_intervals[time_intervals > start_bin])
+                else:
+                    count = len(time_intervals[(time_intervals > start_bin) & (time_intervals <= end_bin)])
+                percentage = count / len(time_intervals) * 100 if len(time_intervals) > 0 else 0
+                print(f"    {label}: {count} 订单 ({percentage:.1f}%)")
+        
+        # 输出汇总结果
+        print("\n" + "="*80)
+        print("各车型预售期时间间隔分析汇总")
+        print("="*80)
+        
+        results_df = pd.DataFrame(results)
+        print("Results DataFrame columns:", results_df.columns.tolist())
+        print("Results DataFrame shape:", results_df.shape)
+        print(results_df.to_string(index=False))
+        
+        # 不再生成独立的模块四报告，将结果集成到综合报告中
+        # generate_module_four_report(results_df)
+        
+        print("\n" + "="*60)
+        print("模块四：线索-小订时间间隔分析完成")
+        print("="*60)
+        
+        return results_df
+        
+    except Exception as e:
+        print(f"模块四执行过程中发生错误: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+def generate_module_four_report(results_df):
+    """
+    生成模块四分析报告
+    """
+    if results_df is None or results_df.empty:
+        print("模块四结果为空，无法生成报告")
+        return
+    
+    report_path = "/Users/zihao_/Documents/github/W33_utils_3/tasks/time_interval_analysis_report.md"
+    
+    with open(report_path, 'w', encoding='utf-8') as f:
+        f.write("# 线索-小订时间间隔分析报告\n\n")
+        f.write(f"**生成时间**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+        
+        # 写入汇总表格
+        f.write("## 各车型预售期时间间隔统计\n\n")
+        f.write("| 车型 | 预售开始日期 | 预售结束日期 | 订单数量 | 平均时间间隔(天) | 最大时间间隔(天) | 中位数时间间隔(天) | 标准差(天) |\n")
+        f.write("|------|-------------|-------------|----------|------------------|------------------|-------------------|------------|\n")
+        for _, row in results_df.iterrows():
+            f.write(f"| {row['车型']} | {row['预售开始日期']} | {row['预售结束日期']} | {row['订单数量']:,} | {row['平均时间间隔(天)']} | {row['最大时间间隔(天)']} | {row['中位数时间间隔(天)']} | {row['标准差(天)']} |\n")
+        
+        # 写入分析说明
+        f.write("\n## 分析说明\n\n")
+        f.write("- **时间间隔计算**: Intention_Payment_Time - first_assign_time\n")
+        f.write("- **筛选条件**: Intention_Payment_Time在各车型预售周期内\n")
+        f.write("- **统计指标**: 平均值、最大值、中位数、标准差\n")
+        f.write("- **数据单位**: 天数\n\n")
+        
+        # 写入关键发现
+        f.write("## 关键发现\n\n")
+        
+        # 计算整体统计
+        valid_results = results_df[results_df['订单数量'] > 0]
+        if not valid_results.empty:
+            total_orders = valid_results['订单数量'].sum()
+            avg_of_avgs = valid_results['平均时间间隔(天)'].mean()
+            max_interval = valid_results['最大时间间隔(天)'].max()
+            
+            f.write(f"- **总订单数**: {total_orders:,}\n")
+            f.write(f"- **各车型平均时间间隔的均值**: {avg_of_avgs:.2f} 天\n")
+            f.write(f"- **最长时间间隔**: {max_interval} 天\n")
+            
+            # 找出时间间隔最短和最长的车型
+            shortest_model = valid_results.loc[valid_results['平均时间间隔(天)'].idxmin()]
+            longest_model = valid_results.loc[valid_results['平均时间间隔(天)'].idxmax()]
+            
+            f.write(f"- **平均时间间隔最短车型**: {shortest_model['车型']} ({shortest_model['平均时间间隔(天)']} 天)\n")
+            f.write(f"- **平均时间间隔最长车型**: {longest_model['车型']} ({longest_model['平均时间间隔(天)']} 天)\n")
+    
+    print(f"\n模块四分析报告已保存到: {report_path}")
+
+def module_four_post_launch_analysis(orders_df, days_after_launch=5):
+    """
+    模块四变体：发布会后N天的线索-小订时间间隔分析
+    分析发布会后指定天数内的订单时间间隔统计
+    """
+    if orders_df is None or orders_df.empty:
+        print("错误: 订单数据加载失败，无法执行发布会后分析")
+        return None
+    
+    print("\n" + "="*80)
+    print(f"模块四变体：发布会后{days_after_launch}天时间间隔分析")
+    print("="*80)
+    
+    # 定义各车型预售时间范围（发布会开始日期）
+    presale_periods = {
+        'CM0': {'start': '2023-08-25', 'end': '2023-10-12'},
+        'DM0': {'start': '2024-04-08', 'end': '2024-05-13'},
+        'CM1': {'start': '2024-08-30', 'end': '2024-09-26'},
+        'CM2': {'start': '2025-08-15', 'end': '2025-09-10'},
+        'DM1': {'start': '2025-04-18', 'end': '2025-05-13'}
+    }
+    
+    try:
+        # 数据预处理
+        print("\n" + "="*60)
+        print("数据预处理")
+        print("="*60)
+        
+        # 创建数据副本
+        orders_work_df = orders_df.copy()
+        
+        # 检查必要字段
+        required_fields = ['first_assign_time', 'Intention_Payment_Time', 'Order Number']
+        missing_fields = [field for field in required_fields if field not in orders_work_df.columns]
+        
+        if missing_fields:
+            print(f"错误: 缺少必要字段: {missing_fields}")
+            print(f"可用字段: {list(orders_work_df.columns)}")
+            return None
+        
+        # 处理日期字段
+        orders_work_df['first_assign_time'] = pd.to_datetime(orders_work_df['first_assign_time'])
+        orders_work_df['Intention_Payment_Time'] = pd.to_datetime(orders_work_df['Intention_Payment_Time'])
+        
+        # 计算时间间隔（天数）
+        orders_work_df['time_interval_days'] = (
+            orders_work_df['Intention_Payment_Time'] - orders_work_df['first_assign_time']
+        ).dt.days
+        
+        # 过滤掉无效的时间间隔（负值或空值）
+        valid_orders = orders_work_df.dropna(subset=['time_interval_days'])
+        valid_orders = valid_orders[valid_orders['time_interval_days'] >= 0]
+        
+        print(f"有效订单数据: {len(valid_orders)} 条")
+        print(f"原始订单数据: {len(orders_work_df)} 条")
+        print(f"数据有效率: {len(valid_orders)/len(orders_work_df)*100:.2f}%")
+        
+        # 按车型和发布会后N天分析
+        print("\n" + "="*60)
+        print(f"各车型发布会后{days_after_launch}天时间间隔分析")
+        print("="*60)
+        
+        results = []
+        
+        for model, period in presale_periods.items():
+            print(f"\n分析车型: {model}")
+            launch_date = pd.to_datetime(period['start'])
+            end_date = launch_date + timedelta(days=days_after_launch)
+            print(f"发布会日期: {period['start']}")
+            print(f"分析时间范围: {period['start']} 至 {end_date.strftime('%Y-%m-%d')}")
+            
+            # 筛选该车型在发布会后N天内的订单（基于Intention_Payment_Time）
+            if 'Model' in valid_orders.columns:
+                model_orders = valid_orders[
+                    (valid_orders['Model'] == model) &
+                    (valid_orders['Intention_Payment_Time'] >= launch_date) &
+                    (valid_orders['Intention_Payment_Time'] <= end_date)
+                ]
+            else:
+                # 如果没有车型字段，按时间筛选所有订单
+                model_orders = valid_orders[
+                    (valid_orders['Intention_Payment_Time'] >= launch_date) &
+                    (valid_orders['Intention_Payment_Time'] <= end_date)
+                ]
+                print(f"  警告: 未找到'Model'字段，使用所有订单数据")
+            
+            if len(model_orders) == 0:
+                print(f"  该车型在发布会后{days_after_launch}天内无有效订单数据")
+                result = {
+                    '车型': model,
+                    '发布会日期': period['start'],
+                    f'发布会后{days_after_launch}天截止日期': end_date.strftime('%Y-%m-%d'),
+                    '订单数量': 0,
+                    '平均时间间隔(天)': 0,
+                    '最大时间间隔(天)': 0,
+                    '中位数时间间隔(天)': 0,
+                    '标准差(天)': 0
+                }
+                results.append(result)
+                continue
+            
+            # 计算统计指标
+            time_intervals = model_orders['time_interval_days']
+            
+            avg_interval = time_intervals.mean()
+            max_interval = time_intervals.max()
+            median_interval = time_intervals.median()
+            std_interval = time_intervals.std()
+            
+            result = {
+                '车型': model,
+                '发布会日期': period['start'],
+                f'发布会后{days_after_launch}天截止日期': end_date.strftime('%Y-%m-%d'),
+                '订单数量': len(model_orders),
+                '平均时间间隔(天)': round(avg_interval, 2),
+                '最大时间间隔(天)': int(max_interval),
+                '中位数时间间隔(天)': round(median_interval, 2),
+                '标准差(天)': round(std_interval, 2)
+            }
+            
+            results.append(result)
+            
+            print(f"  订单数量: {len(model_orders):,}")
+            print(f"  平均时间间隔: {avg_interval:.2f} 天")
+            print(f"  最大时间间隔: {max_interval} 天")
+            print(f"  中位数时间间隔: {median_interval:.2f} 天")
+            print(f"  标准差: {std_interval:.2f} 天")
+            
+            # 显示时间间隔分布
+            print(f"  时间间隔分布:")
+            interval_bins = [0, 1, 2, 3, 4, 5, float('inf')]
+            interval_labels = ['0-1天', '1-2天', '2-3天', '3-4天', '4-5天', '5天以上']
+            
+            for i, (start_bin, end_bin, label) in enumerate(zip(interval_bins[:-1], interval_bins[1:], interval_labels)):
+                if end_bin == float('inf'):
+                    count = len(time_intervals[time_intervals > start_bin])
+                else:
+                    count = len(time_intervals[(time_intervals > start_bin) & (time_intervals <= end_bin)])
+                percentage = count / len(time_intervals) * 100 if len(time_intervals) > 0 else 0
+                print(f"    {label}: {count} 订单 ({percentage:.1f}%)")
+        
+        # 输出汇总结果
+        print("\n" + "="*80)
+        print(f"各车型发布会后{days_after_launch}天时间间隔分析汇总")
+        print("="*80)
+        
+        results_df = pd.DataFrame(results)
+        print("Results DataFrame columns:", results_df.columns.tolist())
+        print("Results DataFrame shape:", results_df.shape)
+        print(results_df.to_string(index=False))
+        
+        # 不再生成独立的发布会后分析报告，将结果集成到综合报告中
+        # generate_post_launch_report(results_df, days_after_launch)
+        
+        print("\n" + "="*60)
+        print(f"发布会后{days_after_launch}天时间间隔分析完成")
+        print("="*60)
+        
+        return results_df
+        
+    except Exception as e:
+        print(f"发布会后分析执行过程中发生错误: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+def generate_post_launch_report(results_df, days_after_launch):
+    """
+    生成发布会后N天分析报告
+    """
+    if results_df is None or results_df.empty:
+        print(f"发布会后{days_after_launch}天分析结果为空，无法生成报告")
+        return
+    
+    report_path = f"/Users/zihao_/Documents/github/W33_utils_3/tasks/post_launch_{days_after_launch}days_analysis_report.md"
+    
+    with open(report_path, 'w', encoding='utf-8') as f:
+        f.write(f"# 发布会后{days_after_launch}天线索-小订时间间隔分析报告\n\n")
+        f.write(f"**生成时间**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+        
+        # 写入汇总表格
+        f.write(f"## 各车型发布会后{days_after_launch}天时间间隔统计\n\n")
+        f.write("| 车型 | 发布会日期 | 截止日期 | 订单数量 | 平均时间间隔(天) | 最大时间间隔(天) | 中位数时间间隔(天) | 标准差(天) |\n")
+        f.write("|------|------------|----------|----------|------------------|------------------|-------------------|------------|\n")
+        for _, row in results_df.iterrows():
+            end_date_col = f'发布会后{days_after_launch}天截止日期'
+            f.write(f"| {row['车型']} | {row['发布会日期']} | {row[end_date_col]} | {row['订单数量']:,} | {row['平均时间间隔(天)']} | {row['最大时间间隔(天)']} | {row['中位数时间间隔(天)']} | {row['标准差(天)']} |\n")
+        
+        # 写入分析说明
+        f.write("\n## 分析说明\n\n")
+        f.write("- **时间间隔计算**: Intention_Payment_Time - first_assign_time\n")
+        f.write(f"- **筛选条件**: Intention_Payment_Time在各车型发布会后{days_after_launch}天内\n")
+        f.write("- **统计指标**: 平均值、最大值、中位数、标准差\n")
+        f.write("- **数据单位**: 天数\n\n")
+        
+        # 写入关键发现
+        f.write("## 关键发现\n\n")
+        
+        # 计算整体统计
+        valid_results = results_df[results_df['订单数量'] > 0]
+        if not valid_results.empty:
+            total_orders = valid_results['订单数量'].sum()
+            avg_of_avgs = valid_results['平均时间间隔(天)'].mean()
+            max_interval = valid_results['最大时间间隔(天)'].max()
+            
+            f.write(f"- **总订单数**: {total_orders:,}\n")
+            f.write(f"- **各车型平均时间间隔的均值**: {avg_of_avgs:.2f} 天\n")
+            f.write(f"- **最长时间间隔**: {max_interval} 天\n")
+            
+            if len(valid_results) > 1:
+                # 找出时间间隔最短和最长的车型
+                shortest_model = valid_results.loc[valid_results['平均时间间隔(天)'].idxmin()]
+                longest_model = valid_results.loc[valid_results['平均时间间隔(天)'].idxmax()]
+                
+                f.write(f"- **平均时间间隔最短车型**: {shortest_model['车型']} ({shortest_model['平均时间间隔(天)']} 天)\n")
+                f.write(f"- **平均时间间隔最长车型**: {longest_model['车型']} ({longest_model['平均时间间隔(天)']} 天)\n")
+            
+            # 对比整个预售期的差异
+            f.write(f"\n### 与整个预售期对比\n\n")
+            f.write(f"发布会后{days_after_launch}天的数据相比整个预售期，可以更好地反映早期用户的决策速度和转化效率。\n")
+    
+    print(f"\n发布会后{days_after_launch}天分析报告已保存到: {report_path}")
+
+
+def module_five_pre_post_launch_comparison(orders_df):
+    """
+    模块五：按first_assign_time相对于发布会时间分组分析
+    将订单分为发布会前和发布会后两组，对比时间间隔统计指标
+    """
+    print("\n开始执行模块五：发布会前后分组对比分析")
+    print("="*60)
+    
+    # 定义各车型发布会时间（与预售时间范围保持一致）
+    launch_dates = {
+        'CM0': '2023-08-25',
+        'DM0': '2024-04-08', 
+        'CM1': '2024-08-30',
+        'CM2': '2025-08-15',
+        'DM1': '2025-04-18'
+    }
+    
+    # 定义各车型预售时间范围
+    presale_periods = {
+        'CM0': {'start': '2023-08-25', 'end': '2023-10-12'},
+        'DM0': {'start': '2024-04-08', 'end': '2024-05-13'},
+        'CM1': {'start': '2024-08-30', 'end': '2024-09-26'},
+        'CM2': {'start': '2025-08-15', 'end': '2025-09-10'},
+        'DM1': {'start': '2025-04-18', 'end': '2025-05-13'}
+    }
+    
+    results = []
+    
+    for model, launch_date in launch_dates.items():
+        print(f"\n分析车型: {model}")
+        print(f"发布会日期: {launch_date}")
+        
+        # 获取预售期范围
+        presale_start = presale_periods[model]['start']
+        presale_end = presale_periods[model]['end']
+        print(f"预售期范围: {presale_start} 至 {presale_end}")
+        
+        # 筛选该车型在预售期内的订单
+        model_orders = orders_df[
+            (orders_df['Intention_Payment_Time'] >= presale_start) & 
+            (orders_df['Intention_Payment_Time'] <= presale_end)
+        ].copy()
+        
+        if len(model_orders) == 0:
+            print(f"  警告: 车型 {model} 在预售期内无订单数据")
+            continue
+            
+        # 计算时间间隔
+        model_orders['first_assign_time'] = pd.to_datetime(model_orders['first_assign_time'])
+        model_orders['Intention_Payment_Time'] = pd.to_datetime(model_orders['Intention_Payment_Time'])
+        model_orders['time_interval'] = (model_orders['Intention_Payment_Time'] - model_orders['first_assign_time']).dt.days
+        
+        # 过滤无效数据
+        valid_orders = model_orders.dropna(subset=['time_interval'])
+        valid_orders = valid_orders[valid_orders['time_interval'] >= 0]
+        
+        if len(valid_orders) == 0:
+            print(f"  警告: 车型 {model} 无有效时间间隔数据")
+            continue
+            
+        # 按发布会时间分组
+        launch_datetime = pd.to_datetime(launch_date)
+        
+        # 发布会前组：first_assign_time < 发布会时间
+        pre_launch = valid_orders[valid_orders['first_assign_time'] < launch_datetime]
+        # 发布会后组：first_assign_time >= 发布会时间  
+        post_launch = valid_orders[valid_orders['first_assign_time'] >= launch_datetime]
+        
+        print(f"  发布会前订单数: {len(pre_launch)}")
+        print(f"  发布会后订单数: {len(post_launch)}")
+        
+        # 计算发布会前组统计指标
+        if len(pre_launch) > 0:
+            pre_stats = {
+                '车型': model,
+                '分组': '发布会前',
+                '发布会日期': launch_date,
+                '订单数量': len(pre_launch),
+                '平均时间间隔(天)': pre_launch['time_interval'].mean(),
+                '最大时间间隔(天)': pre_launch['time_interval'].max(),
+                '中位数时间间隔(天)': pre_launch['time_interval'].median(),
+                '标准差(天)': pre_launch['time_interval'].std()
+            }
+            results.append(pre_stats)
+            print(f"  发布会前 - 平均时间间隔: {pre_stats['平均时间间隔(天)']:.2f} 天")
+        
+        # 计算发布会后组统计指标
+        if len(post_launch) > 0:
+            post_stats = {
+                '车型': model,
+                '分组': '发布会后', 
+                '发布会日期': launch_date,
+                '订单数量': len(post_launch),
+                '平均时间间隔(天)': post_launch['time_interval'].mean(),
+                '最大时间间隔(天)': post_launch['time_interval'].max(),
+                '中位数时间间隔(天)': post_launch['time_interval'].median(),
+                '标准差(天)': post_launch['time_interval'].std()
+            }
+            results.append(post_stats)
+            print(f"  发布会后 - 平均时间间隔: {post_stats['平均时间间隔(天)']:.2f} 天")
+    
+    # 转换为DataFrame
+    results_df = pd.DataFrame(results)
+    
+    print("\n" + "="*80)
+    print("发布会前后分组对比分析汇总")
+    print("="*80)
+    print(f"Results DataFrame columns: {list(results_df.columns)}")
+    print(f"Results DataFrame shape: {results_df.shape}")
+    if not results_df.empty:
+        print(results_df.to_string(index=False))
+    
+    print("\n" + "="*60)
+    print("发布会前后分组对比分析完成")
+    print("="*60)
+    
+    return results_df
+
+
+# ============================================================================
+# 综合报告生成
+# ============================================================================
+
+def generate_comprehensive_report(module_two_results=None, module_three_results=None, module_four_results=None, module_four_post_launch_results=None, module_five_results=None, leads_info=None, orders_info=None):
     """
     生成综合分析报告，整合所有模块结果
     """
@@ -1014,15 +1674,145 @@ def generate_comprehensive_report(module_two_results=None, module_three_results=
             for _, row in module_three_results.iterrows():
                 f.write(f"| {row['车型']} | {row['进度(%)']} | {row['进度天数']} | {row['进度日期']} | {row['累计线索数']} | {row['累计小订数']} | {row['累计总小订数']} | {row['转化率(%)']} | {row['小订比值(%)']} |\n")
             f.write("\n")
+            
+            # 生成对比表格
+            generate_comparison_tables(f, module_three_results)
         else:
             f.write("模块三分析结果不可用\n\n")
         
+        # 模块四：线索-小订时间间隔分析
+        f.write("## 模块四：线索-小订时间间隔分析\n\n")
+        if module_four_results is not None and not module_four_results.empty:
+            f.write("### 各车型预售期时间间隔统计\n\n")
+            f.write("| 车型 | 预售开始日期 | 预售结束日期 | 订单数量 | 平均时间间隔(天) | 最大时间间隔(天) | 中位数时间间隔(天) | 标准差(天) |\n")
+            f.write("|------|-------------|-------------|----------|------------------|------------------|-------------------|------------|\n")
+            for _, row in module_four_results.iterrows():
+                f.write(f"| {row['车型']} | {row['预售开始日期']} | {row['预售结束日期']} | {row['订单数量']:,} | {row['平均时间间隔(天)']} | {row['最大时间间隔(天)']} | {row['中位数时间间隔(天)']} | {row['标准差(天)']} |\n")
+            f.write("\n")
+            
+            # 添加时间间隔分析说明
+            f.write("### 时间间隔分析说明\n\n")
+            f.write("- **计算方法**: Intention_Payment_Time - first_assign_time\n")
+            f.write("- **筛选条件**: Intention_Payment_Time在各车型预售周期内\n")
+            f.write("- **统计指标**: 平均值、最大值、中位数、标准差\n")
+            f.write("- **数据单位**: 天数\n\n")
+            
+            # 添加关键发现
+            valid_results = module_four_results[module_four_results['订单数量'] > 0]
+            if not valid_results.empty:
+                total_orders = valid_results['订单数量'].sum()
+                avg_of_avgs = valid_results['平均时间间隔(天)'].mean()
+                
+                f.write("### 关键发现\n\n")
+                f.write(f"- **总订单数**: {total_orders:,}\n")
+                f.write(f"- **各车型平均时间间隔的均值**: {avg_of_avgs:.2f} 天\n")
+                
+                if len(valid_results) > 1:
+                    shortest_model = valid_results.loc[valid_results['平均时间间隔(天)'].idxmin()]
+                    longest_model = valid_results.loc[valid_results['平均时间间隔(天)'].idxmax()]
+                    f.write(f"- **平均时间间隔最短车型**: {shortest_model['车型']} ({shortest_model['平均时间间隔(天)']} 天)\n")
+                    f.write(f"- **平均时间间隔最长车型**: {longest_model['车型']} ({longest_model['平均时间间隔(天)']} 天)\n")
+                f.write("\n")
+        else:
+            f.write("模块四分析结果不可用\n\n")
+        
+        # 模块四变体：发布会后5天分析
+        f.write("## 模块四变体：发布会后5天线索-小订时间间隔分析\n\n")
+        if module_four_post_launch_results is not None and not module_four_post_launch_results.empty:
+            f.write("### 各车型发布会后5天时间间隔统计\n\n")
+            f.write("| 车型 | 发布会日期 | 截止日期 | 订单数量 | 平均时间间隔(天) | 最大时间间隔(天) | 中位数时间间隔(天) | 标准差(天) |\n")
+            f.write("|------|------------|----------|----------|------------------|------------------|-------------------|------------|\n")
+            for _, row in module_four_post_launch_results.iterrows():
+                end_date_col = '发布会后5天截止日期'
+                f.write(f"| {row['车型']} | {row['发布会日期']} | {row[end_date_col]} | {row['订单数量']:,} | {row['平均时间间隔(天)']} | {row['最大时间间隔(天)']} | {row['中位数时间间隔(天)']} | {row['标准差(天)']} |\n")
+            f.write("\n")
+            
+            # 添加发布会后分析说明
+            f.write("### 发布会后5天分析说明\n\n")
+            f.write("- **计算方法**: Intention_Payment_Time - first_assign_time\n")
+            f.write("- **筛选条件**: Intention_Payment_Time在各车型发布会后5天内\n")
+            f.write("- **统计指标**: 平均值、最大值、中位数、标准差\n")
+            f.write("- **数据单位**: 天数\n\n")
+            
+            # 添加关键发现
+            valid_results = module_four_post_launch_results[module_four_post_launch_results['订单数量'] > 0]
+            if not valid_results.empty:
+                total_orders = valid_results['订单数量'].sum()
+                avg_of_avgs = valid_results['平均时间间隔(天)'].mean()
+                max_interval = valid_results['最大时间间隔(天)'].max()
+                
+                f.write("### 发布会后5天关键发现\n\n")
+                f.write(f"- **总订单数**: {total_orders:,}\n")
+                f.write(f"- **各车型平均时间间隔的均值**: {avg_of_avgs:.2f} 天\n")
+                f.write(f"- **最长时间间隔**: {max_interval} 天\n")
+                
+                if len(valid_results) > 1:
+                    shortest_model = valid_results.loc[valid_results['平均时间间隔(天)'].idxmin()]
+                    longest_model = valid_results.loc[valid_results['平均时间间隔(天)'].idxmax()]
+                    f.write(f"- **平均时间间隔最短车型**: {shortest_model['车型']} ({shortest_model['平均时间间隔(天)']} 天)\n")
+                    f.write(f"- **平均时间间隔最长车型**: {longest_model['车型']} ({longest_model['平均时间间隔(天)']} 天)\n")
+                
+                f.write(f"\n### 与整个预售期对比\n\n")
+                f.write(f"发布会后5天的数据相比整个预售期，可以更好地反映早期用户的决策速度和转化效率。\n\n")
+        else:
+            f.write("发布会后5天分析结果不可用\n\n")
+        
+        # 模块五：发布会前后分组对比分析
+        f.write("## 模块五：发布会前后分组对比分析\n\n")
+        
+        if module_five_results is not None and not module_five_results.empty:
+            # 按车型分组展示结果
+            f.write("### 各车型发布会前后时间间隔对比\n\n")
+            f.write("| 车型 | 分组 | 发布会日期 | 订单数量 | 平均时间间隔(天) | 最大时间间隔(天) | 中位数时间间隔(天) | 标准差(天) |\n")
+            f.write("|------|------|------------|----------|------------------|------------------|-------------------|------------|\n")
+            
+            for _, row in module_five_results.iterrows():
+                f.write(f"| {row['车型']} | {row['分组']} | {row['发布会日期']} | {row['订单数量']:,} | {row['平均时间间隔(天)']:.2f} | {row['最大时间间隔(天)']} | {row['中位数时间间隔(天)']:.1f} | {row['标准差(天)']:.2f} |\n")
+            
+            f.write("\n### 发布会前后对比分析说明\n\n")
+            f.write("- **分组依据**: 根据first_assign_time相对于发布会时间进行分组\n")
+            f.write("- **发布会前组**: first_assign_time < 发布会时间\n")
+            f.write("- **发布会后组**: first_assign_time >= 发布会时间\n")
+            f.write("- **统计指标**: 平均值、最大值、中位数、标准差\n")
+            f.write("- **数据单位**: 天数\n\n")
+            
+            # 关键发现
+            f.write("### 发布会前后对比关键发现\n\n")
+            
+            # 按分组统计
+            pre_launch_data = module_five_results[module_five_results['分组'] == '发布会前']
+            post_launch_data = module_five_results[module_five_results['分组'] == '发布会后']
+            
+            if not pre_launch_data.empty:
+                pre_total = pre_launch_data['订单数量'].sum()
+                pre_avg = pre_launch_data['平均时间间隔(天)'].mean()
+                f.write(f"- **发布会前总订单数**: {pre_total:,}\n")
+                f.write(f"- **发布会前平均时间间隔**: {pre_avg:.2f} 天\n")
+            
+            if not post_launch_data.empty:
+                post_total = post_launch_data['订单数量'].sum()
+                post_avg = post_launch_data['平均时间间隔(天)'].mean()
+                f.write(f"- **发布会后总订单数**: {post_total:,}\n")
+                f.write(f"- **发布会后平均时间间隔**: {post_avg:.2f} 天\n")
+            
+            if not pre_launch_data.empty and not post_launch_data.empty:
+                diff = post_avg - pre_avg
+                f.write(f"- **平均时间间隔差异**: {diff:.2f} 天 (发布会后 - 发布会前)\n")
+            
+            f.write("\n### 对比分析结论\n\n")
+            f.write("通过对比发布会前后的订单时间间隔，可以分析发布会对用户决策速度的影响，以及不同时期用户行为的差异。\n\n")
+        else:
+            f.write("发布会前后分组对比分析结果不可用\n\n")
+        
         # 分析总结
         f.write("## 分析总结\n\n")
-        f.write("本报告包含三个分析模块的完整结果：\n")
+        f.write("本报告包含五个分析模块及其变体的完整结果：\n")
         f.write("1. **模块一**：完成了数据基本信息的验证和展示\n")
         f.write("2. **模块二**：完成了各车型预售期转化率的综合分析\n")
-        f.write("3. **模块三**：完成了预售周期的归一化分析\n\n")
+        f.write("3. **模块三**：完成了预售周期的归一化分析\n")
+        f.write("4. **模块四**：完成了线索-小订时间间隔的统计分析\n")
+        f.write("5. **模块四变体**：完成了发布会后5天的时间间隔专项分析\n")
+        f.write("6. **模块五**：完成了发布会前后分组对比分析\n\n")
         f.write("报告结构已为后续模块扩展做好准备。\n")
     
     print(f"\n综合分析报告已保存到: {report_path}")
@@ -1043,6 +1833,7 @@ def main():
     
     module_two_results = None
     module_three_results = None
+    module_four_results = None
     
     if leads_df is not None and orders_df is not None:
         # 模块二：线索转化率综合分析
@@ -1051,8 +1842,23 @@ def main():
         # 模块三：预售周期归一化分析
         module_three_results = module_three_normalize_analysis(leads_df, orders_df)
         
+        # 模块四：线索-小订时间间隔分析
+        module_four_results = module_four_time_interval_analysis(orders_df)
+        
+        # 模块四变体：发布会后5天分析
+        print("\n" + "="*80)
+        print("执行发布会后5天时间间隔分析")
+        print("="*80)
+        module_four_post_launch_results = module_four_post_launch_analysis(orders_df, days_after_launch=5)
+        
+        # 模块五：发布会前后分组对比分析
+        print("\n" + "="*80)
+        print("执行模块五：发布会前后分组对比分析")
+        print("="*80)
+        module_five_results = module_five_pre_post_launch_comparison(orders_df)
+        
         # 生成综合报告
-        generate_comprehensive_report(module_two_results, module_three_results, leads_info, orders_info)
+        generate_comprehensive_report(module_two_results, module_three_results, module_four_results, module_four_post_launch_results, module_five_results, leads_info, orders_info)
     else:
         print("数据加载失败，程序终止")
         # 即使数据加载失败，也生成一个基础报告
