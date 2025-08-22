@@ -1084,6 +1084,16 @@ def module_four_time_interval_analysis(orders_df):
         valid_orders = orders_work_df.dropna(subset=['time_interval_days'])
         valid_orders = valid_orders[valid_orders['time_interval_days'] >= 0]
         
+        # 添加时间异常值过滤：排除超过合理范围的时间间隔
+        # 合理的时间间隔应该在0-365天之间（1年内）
+        print(f"过滤前有效订单数: {len(valid_orders)}")
+        print(f"时间间隔统计 - 最小值: {valid_orders['time_interval_days'].min()}, 最大值: {valid_orders['time_interval_days'].max()}")
+        
+        # 过滤异常值：时间间隔超过365天的视为异常
+        valid_orders = valid_orders[valid_orders['time_interval_days'] <= 365]
+        print(f"过滤异常值后有效订单数: {len(valid_orders)}")
+        print(f"过滤后时间间隔统计 - 最小值: {valid_orders['time_interval_days'].min()}, 最大值: {valid_orders['time_interval_days'].max()}")
+        
         print(f"有效订单数据: {len(valid_orders)} 条")
         print(f"原始订单数据: {len(orders_work_df)} 条")
         print(f"数据有效率: {len(valid_orders)/len(orders_work_df)*100:.2f}%")
@@ -1300,6 +1310,16 @@ def module_four_post_launch_analysis(orders_df, days_after_launch=5):
         # 过滤掉无效的时间间隔（负值或空值）
         valid_orders = orders_work_df.dropna(subset=['time_interval_days'])
         valid_orders = valid_orders[valid_orders['time_interval_days'] >= 0]
+        
+        # 添加时间异常值过滤：排除超过合理范围的时间间隔
+        # 合理的时间间隔应该在0-365天之间（1年内）
+        print(f"过滤前有效订单数: {len(valid_orders)}")
+        print(f"时间间隔统计 - 最小值: {valid_orders['time_interval_days'].min()}, 最大值: {valid_orders['time_interval_days'].max()}")
+        
+        # 过滤异常值：时间间隔超过365天的视为异常
+        valid_orders = valid_orders[valid_orders['time_interval_days'] <= 365]
+        print(f"过滤异常值后有效订单数: {len(valid_orders)}")
+        print(f"过滤后时间间隔统计 - 最小值: {valid_orders['time_interval_days'].min()}, 最大值: {valid_orders['time_interval_days'].max()}")
         
         print(f"有效订单数据: {len(valid_orders)} 条")
         print(f"原始订单数据: {len(orders_work_df)} 条")
@@ -1528,6 +1548,18 @@ def module_five_pre_post_launch_comparison(orders_df):
         valid_orders = model_orders.dropna(subset=['time_interval'])
         valid_orders = valid_orders[valid_orders['time_interval'] >= 0]
         
+        # 添加时间异常值过滤：排除超过合理范围的时间间隔
+        # 合理的时间间隔应该在0-365天之间（1年内）
+        print(f"  过滤前有效订单数: {len(valid_orders)}")
+        if len(valid_orders) > 0:
+            print(f"  时间间隔统计 - 最小值: {valid_orders['time_interval'].min()}, 最大值: {valid_orders['time_interval'].max()}")
+            
+            # 过滤异常值：时间间隔超过365天的视为异常
+            valid_orders = valid_orders[valid_orders['time_interval'] <= 365]
+            print(f"  过滤异常值后有效订单数: {len(valid_orders)}")
+            if len(valid_orders) > 0:
+                print(f"  过滤后时间间隔统计 - 最小值: {valid_orders['time_interval'].min()}, 最大值: {valid_orders['time_interval'].max()}")
+        
         if len(valid_orders) == 0:
             print(f"  警告: 车型 {model} 无有效时间间隔数据")
             continue
@@ -1591,11 +1623,227 @@ def module_five_pre_post_launch_comparison(orders_df):
     return results_df
 
 
+def module_six_lock_rate_analysis(orders_df):
+    """
+    模块六：锁单率分析模块
+    筛选CM0、CM1、DM0、DM1四个车型在预售周期内的小订订单
+    统计不同"线索-小订时间间隔"情况下的小订数、锁单数和锁单率
+    按照"线索-小订时间间隔"的长度降序排序
+    """
+    if orders_df is None or orders_df.empty:
+        print("错误: 订单数据加载失败，无法执行模块六分析")
+        return None
+    
+    print("\n" + "="*80)
+    print("模块六：锁单率分析模块")
+    print("="*80)
+    
+    # 定义目标车型的预售时间范围
+    target_models = {
+        'CM0': {'start': '2023-08-25', 'end': '2023-10-12'},
+        'DM0': {'start': '2024-04-08', 'end': '2024-05-13'},
+        'CM1': {'start': '2024-08-30', 'end': '2024-09-26'},
+        'DM1': {'start': '2025-04-18', 'end': '2025-05-13'}
+    }
+    
+    try:
+        # 数据预处理
+        print("\n" + "="*60)
+        print("数据预处理")
+        print("="*60)
+        
+        # 创建数据副本
+        orders_work_df = orders_df.copy()
+        
+        # 检查必要字段
+        required_fields = ['first_assign_time', 'Intention_Payment_Time', 'Lock_Time']
+        missing_fields = [field for field in required_fields if field not in orders_work_df.columns]
+        
+        if missing_fields:
+            print(f"错误: 缺少必要字段: {missing_fields}")
+            print(f"可用字段: {list(orders_work_df.columns)}")
+            return None
+        
+        # 处理日期字段
+        orders_work_df['first_assign_time'] = pd.to_datetime(orders_work_df['first_assign_time'])
+        orders_work_df['Intention_Payment_Time'] = pd.to_datetime(orders_work_df['Intention_Payment_Time'])
+        orders_work_df['Lock_Time'] = pd.to_datetime(orders_work_df['Lock_Time'])
+        
+        # 筛选有小订时间的订单（有Intention_Payment_Time）
+        orders_with_intention = orders_work_df.dropna(subset=['Intention_Payment_Time'])
+        print(f"有小订时间的订单数: {len(orders_with_intention)}")
+        
+        # 计算时间间隔（天数）
+        orders_with_intention['time_interval_days'] = (
+            orders_with_intention['Intention_Payment_Time'] - orders_with_intention['first_assign_time']
+        ).dt.days
+        
+        # 过滤掉无效的时间间隔（负值或空值）
+        valid_orders = orders_with_intention.dropna(subset=['time_interval_days'])
+        valid_orders = valid_orders[valid_orders['time_interval_days'] >= 0]
+        
+        # 添加时间异常值过滤：排除超过合理范围的时间间隔
+        print(f"过滤前有效订单数: {len(valid_orders)}")
+        if len(valid_orders) > 0:
+            print(f"时间间隔统计 - 最小值: {valid_orders['time_interval_days'].min()}, 最大值: {valid_orders['time_interval_days'].max()}")
+            
+            # 过滤异常值：时间间隔超过365天的视为异常
+            valid_orders = valid_orders[valid_orders['time_interval_days'] <= 365]
+            print(f"过滤异常值后有效订单数: {len(valid_orders)}")
+            if len(valid_orders) > 0:
+                print(f"过滤后时间间隔统计 - 最小值: {valid_orders['time_interval_days'].min()}, 最大值: {valid_orders['time_interval_days'].max()}")
+        
+        # 筛选目标车型在预售周期内的订单
+        all_target_orders = []
+        
+        for model, period in target_models.items():
+            print(f"\n处理车型: {model}")
+            print(f"预售期间: {period['start']} 至 {period['end']}")
+            
+            start_date = pd.to_datetime(period['start'])
+            end_date = pd.to_datetime(period['end'])
+            
+            # 筛选该车型在预售期间的订单
+            if 'Model' in valid_orders.columns:
+                model_orders = valid_orders[
+                    (valid_orders['Model'] == model) &
+                    (valid_orders['Intention_Payment_Time'] >= start_date) &
+                    (valid_orders['Intention_Payment_Time'] <= end_date)
+                ].copy()
+            else:
+                # 如果没有车型字段，按时间筛选所有订单
+                model_orders = valid_orders[
+                    (valid_orders['Intention_Payment_Time'] >= start_date) &
+                    (valid_orders['Intention_Payment_Time'] <= end_date)
+                ].copy()
+                print(f"  警告: 未找到'Model'字段，使用所有订单数据")
+            
+            model_orders['车型'] = model
+            all_target_orders.append(model_orders)
+            print(f"  该车型预售期订单数: {len(model_orders)}")
+        
+        # 合并所有目标车型的订单
+        if all_target_orders:
+            target_orders_df = pd.concat(all_target_orders, ignore_index=True)
+            print(f"\n目标车型总订单数: {len(target_orders_df)}")
+        else:
+            print("\n警告: 未找到目标车型的订单数据")
+            return None
+        
+        # 按时间间隔分组统计
+        print("\n" + "="*60)
+        print("按时间间隔分组统计锁单率")
+        print("="*60)
+        
+        # 定义时间间隔分组
+        interval_bins = [0, 1, 3, 7, 14, 30, 60, 90, 180, 365]
+        interval_labels = ['0天', '1-2天', '3-6天', '7-13天', '14-29天', '30-59天', '60-89天', '90-179天', '180-365天']
+        
+        # 创建时间间隔分组
+        target_orders_df['interval_group'] = pd.cut(
+            target_orders_df['time_interval_days'], 
+            bins=interval_bins, 
+            labels=interval_labels, 
+            include_lowest=True
+        )
+        
+        # 统计每个时间间隔组的数据
+        results = []
+        
+        for interval in interval_labels:
+            interval_orders = target_orders_df[target_orders_df['interval_group'] == interval]
+            
+            if len(interval_orders) == 0:
+                continue
+            
+            # 小订数（有Intention_Payment_Time的订单数）
+            intention_count = len(interval_orders)
+            
+            # 锁单数（有Intention_Payment_Time且有Lock_Time的订单数）
+            lock_count = len(interval_orders.dropna(subset=['Lock_Time']))
+            
+            # 锁单率
+            lock_rate = (lock_count / intention_count * 100) if intention_count > 0 else 0
+            
+            result = {
+                '时间间隔': interval,
+                '小订数': intention_count,
+                '锁单数': lock_count,
+                '锁单率(%)': round(lock_rate, 2)
+            }
+            
+            results.append(result)
+            
+            print(f"  {interval}: 小订数={intention_count}, 锁单数={lock_count}, 锁单率={lock_rate:.2f}%")
+        
+        # 转换为DataFrame并按时间间隔长度降序排序
+        results_df = pd.DataFrame(results)
+        
+        if not results_df.empty:
+            # 创建排序键：将时间间隔转换为数值进行排序
+            def get_interval_sort_key(interval):
+                if interval == '0天':
+                    return 0
+                elif interval == '1-2天':
+                    return 2
+                elif interval == '3-6天':
+                    return 6
+                elif interval == '7-13天':
+                    return 13
+                elif interval == '14-29天':
+                    return 29
+                elif interval == '30-59天':
+                    return 59
+                elif interval == '60-89天':
+                    return 89
+                elif interval == '90-179天':
+                    return 179
+                elif interval == '180-365天':
+                    return 365
+                else:
+                    return 999
+            
+            results_df['sort_key'] = results_df['时间间隔'].apply(get_interval_sort_key)
+            results_df = results_df.sort_values('sort_key', ascending=False).drop('sort_key', axis=1)
+        
+        # 输出汇总结果
+        print("\n" + "="*80)
+        print("锁单率分析汇总（按时间间隔降序排序）")
+        print("="*80)
+        
+        if not results_df.empty:
+            print(f"Results DataFrame columns: {list(results_df.columns)}")
+            print(f"Results DataFrame shape: {results_df.shape}")
+            print(results_df.to_string(index=False))
+            
+            # 计算总体统计
+            total_intention = results_df['小订数'].sum()
+            total_lock = results_df['锁单数'].sum()
+            overall_lock_rate = (total_lock / total_intention * 100) if total_intention > 0 else 0
+            
+            print(f"\n总体统计:")
+            print(f"  总小订数: {total_intention:,}")
+            print(f"  总锁单数: {total_lock:,}")
+            print(f"  总体锁单率: {overall_lock_rate:.2f}%")
+        
+        print("\n" + "="*60)
+        print("模块六：锁单率分析完成")
+        print("="*60)
+        
+        return results_df
+        
+    except Exception as e:
+        print(f"模块六执行过程中发生错误: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
 # ============================================================================
 # 综合报告生成
 # ============================================================================
 
-def generate_comprehensive_report(module_two_results=None, module_three_results=None, module_four_results=None, module_four_post_launch_results=None, module_five_results=None, leads_info=None, orders_info=None):
+def generate_comprehensive_report(module_two_results=None, module_three_results=None, module_four_results=None, module_four_post_launch_results=None, module_five_results=None, module_six_results=None, leads_info=None, orders_info=None):
     """
     生成综合分析报告，整合所有模块结果
     """
@@ -1804,15 +2052,56 @@ def generate_comprehensive_report(module_two_results=None, module_three_results=
         else:
             f.write("发布会前后分组对比分析结果不可用\n\n")
         
+        # 模块六：锁单率分析
+        f.write("## 模块六：锁单率分析\n\n")
+        if module_six_results is not None and not module_six_results.empty:
+            f.write("### CM0、CM1、DM0、DM1车型预售期锁单率统计\n\n")
+            f.write("| 时间间隔 | 小订数 | 锁单数 | 锁单率(%) |\n")
+            f.write("|----------|--------|--------|-----------|\n")
+            for _, row in module_six_results.iterrows():
+                f.write(f"| {row['时间间隔']} | {row['小订数']:,} | {row['锁单数']:,} | {row['锁单率(%)']} |\n")
+            f.write("\n")
+            
+            # 添加锁单率分析说明
+            f.write("### 锁单率分析说明\n\n")
+            f.write("- **目标车型**: CM0、CM1、DM0、DM1\n")
+            f.write("- **分析范围**: 各车型预售周期内的小订订单\n")
+            f.write("- **小订订单**: 有Intention_Payment_Time的订单\n")
+            f.write("- **锁单订单**: 有Intention_Payment_Time且有Lock_Time的订单\n")
+            f.write("- **时间间隔**: first_assign_time到Intention_Payment_Time的天数\n")
+            f.write("- **排序方式**: 按时间间隔长度降序排序\n\n")
+            
+            # 添加关键发现
+            total_intention = module_six_results['小订数'].sum()
+            total_lock = module_six_results['锁单数'].sum()
+            overall_lock_rate = (total_lock / total_intention * 100) if total_intention > 0 else 0
+            
+            f.write("### 关键发现\n\n")
+            f.write(f"- **总小订数**: {total_intention:,}\n")
+            f.write(f"- **总锁单数**: {total_lock:,}\n")
+            f.write(f"- **总体锁单率**: {overall_lock_rate:.2f}%\n")
+            
+            if len(module_six_results) > 0:
+                highest_rate_row = module_six_results.loc[module_six_results['锁单率(%)'].idxmax()]
+                lowest_rate_row = module_six_results.loc[module_six_results['锁单率(%)'].idxmin()]
+                f.write(f"- **最高锁单率时间间隔**: {highest_rate_row['时间间隔']} ({highest_rate_row['锁单率(%)']}%)\n")
+                f.write(f"- **最低锁单率时间间隔**: {lowest_rate_row['时间间隔']} ({lowest_rate_row['锁单率(%)']}%)\n")
+            
+            f.write("\n### 锁单率分析结论\n\n")
+            f.write("通过分析不同时间间隔下的锁单率，可以了解用户从线索到小订再到锁单的转化规律，为优化销售策略提供数据支持。\n\n")
+        else:
+            f.write("锁单率分析结果不可用\n\n")
+        
         # 分析总结
         f.write("## 分析总结\n\n")
-        f.write("本报告包含五个分析模块及其变体的完整结果：\n")
+        f.write("本报告包含六个分析模块及其变体的完整结果：\n")
         f.write("1. **模块一**：完成了数据基本信息的验证和展示\n")
         f.write("2. **模块二**：完成了各车型预售期转化率的综合分析\n")
         f.write("3. **模块三**：完成了预售周期的归一化分析\n")
         f.write("4. **模块四**：完成了线索-小订时间间隔的统计分析\n")
         f.write("5. **模块四变体**：完成了发布会后5天的时间间隔专项分析\n")
-        f.write("6. **模块五**：完成了发布会前后分组对比分析\n\n")
+        f.write("6. **模块五**：完成了发布会前后分组对比分析\n")
+        f.write("7. **模块六**：完成了目标车型预售期锁单率分析\n\n")
         f.write("报告结构已为后续模块扩展做好准备。\n")
     
     print(f"\n综合分析报告已保存到: {report_path}")
@@ -1857,8 +2146,14 @@ def main():
         print("="*80)
         module_five_results = module_five_pre_post_launch_comparison(orders_df)
         
+        # 模块六：锁单率分析
+        print("\n" + "="*80)
+        print("执行模块六：锁单率分析")
+        print("="*80)
+        module_six_results = module_six_lock_rate_analysis(orders_df)
+        
         # 生成综合报告
-        generate_comprehensive_report(module_two_results, module_three_results, module_four_results, module_four_post_launch_results, module_five_results, leads_info, orders_info)
+        generate_comprehensive_report(module_two_results, module_three_results, module_four_results, module_four_post_launch_results, module_five_results, module_six_results, leads_info, orders_info)
     else:
         print("数据加载失败，程序终止")
         # 即使数据加载失败，也生成一个基础报告
