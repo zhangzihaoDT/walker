@@ -24,7 +24,7 @@ from datetime import datetime, timedelta
 def module_one_data_info():
     """
     模块一：数据基本信息打印模块
-    负责数据加载、验证和基础信息展示
+    负责数据加载、验证和基础信息展示，生成数据基本信息报告
     """
     # 数据文件路径
     leads_path = "/Users/zihao_/Documents/github/W33_utils_3/data/leads_structure_analysis.parquet"
@@ -45,33 +45,66 @@ def module_one_data_info():
         orders_df = pd.read_parquet(orders_path)
         print(f"订单数据形状: {orders_df.shape[0]} 行 × {orders_df.shape[1]} 列")
         
-        # 打印数据结构信息
-        print("\n" + "="*60)
-        print("线索数据字段信息")
-        print("="*60)
-        print("字段名:", list(leads_df.columns))
-        print("数据类型:", dict(leads_df.dtypes))
+        # 生成线索数据基本信息
+        leads_info = generate_data_info_report(leads_df, "线索数据")
+        
+        # 生成订单数据基本信息
+        orders_info = generate_data_info_report(orders_df, "订单数据")
         
         print("\n" + "="*60)
-        print("订单数据字段信息")
-        print("="*60)
-        print("字段名:", list(orders_df.columns))
-        print("数据类型:", dict(orders_df.dtypes))
-        
-        print("\n" + "="*60)
-        print("模块一：数据基本信息打印完成")
+        print("模块一：数据基本信息分析完成")
         print("="*60)
         
-        return leads_df, orders_df
+        return leads_df, orders_df, leads_info, orders_info
         
     except FileNotFoundError as e:
         print(f"错误: 找不到数据文件 {e}")
-        return None, None
+        return None, None, None, None
     except Exception as e:
         print(f"模块一执行过程中发生错误: {str(e)}")
         import traceback
         traceback.print_exc()
-        return None, None
+        return None, None, None, None
+
+def generate_data_info_report(df, data_name):
+    """
+    生成数据基本信息报告
+    """
+    if df is None or df.empty:
+        return {
+            'data_name': data_name,
+            'shape': (0, 0),
+            'columns': [],
+            'dtypes': {},
+            'null_counts': {},
+            'null_percentages': {},
+            'memory_usage': 0
+        }
+    
+    # 计算空值信息
+    null_counts = df.isnull().sum().to_dict()
+    null_percentages = (df.isnull().sum() / len(df) * 100).round(2).to_dict()
+    
+    # 计算内存使用情况
+    memory_usage = df.memory_usage(deep=True).sum() / 1024 / 1024  # MB
+    
+    data_info = {
+        'data_name': data_name,
+        'shape': df.shape,
+        'columns': list(df.columns),
+        'dtypes': dict(df.dtypes.astype(str)),
+        'null_counts': null_counts,
+        'null_percentages': null_percentages,
+        'memory_usage': round(memory_usage, 2)
+    }
+    
+    print(f"\n{data_name}基本信息:")
+    print(f"  数据形状: {df.shape[0]} 行 × {df.shape[1]} 列")
+    print(f"  内存使用: {memory_usage:.2f} MB")
+    print(f"  字段数量: {len(df.columns)}")
+    print(f"  总空值数: {sum(null_counts.values())}")
+    
+    return data_info
 
 # ============================================================================
 # 模块二：线索转化率综合分析报告模块
@@ -140,7 +173,7 @@ def module_two_conversion_analysis(leads_df, orders_df):
         channel_mapping = {
             '官方直播线索数': '官方直播',
             '经销商矩阵线索数': '经销商矩阵', 
-            '网销平台线索数': '网销平台',
+            '网销平台线索数': '垂媒网销',
             '自有渠道线索数': '自有渠道',
             '门店自然客流线索数': '门店自然客流',
             '投放线索数': '投放',
@@ -902,7 +935,7 @@ def generate_updated_report(normalized_df, cm2_analysis_results, launch_analysis
 # 报告生成模块
 # ============================================================================
 
-def generate_comprehensive_report(module_two_results=None, module_three_results=None):
+def generate_comprehensive_report(module_two_results=None, module_three_results=None, leads_info=None, orders_info=None):
     """
     生成综合分析报告，整合所有模块结果
     """
@@ -914,9 +947,51 @@ def generate_comprehensive_report(module_two_results=None, module_three_results=
         
         # 模块一：数据基本信息
         f.write("## 模块一：数据基本信息\n\n")
-        f.write("- 数据加载和验证已完成\n")
-        f.write("- 线索数据和订单数据结构检查通过\n")
-        f.write("- 日期字段预处理完成\n\n")
+        
+        # 写入线索数据基本信息
+        if leads_info is not None:
+            f.write("### 线索数据基本信息\n\n")
+            f.write(f"- **数据形状**: {leads_info['shape'][0]:,} 行 × {leads_info['shape'][1]} 列\n")
+            f.write(f"- **内存使用**: {leads_info['memory_usage']} MB\n")
+            f.write(f"- **字段数量**: {len(leads_info['columns'])}\n")
+            f.write(f"- **总空值数**: {sum(leads_info['null_counts'].values()):,}\n\n")
+            
+            # 字段信息表格
+            f.write("#### 字段详细信息\n\n")
+            f.write("| 字段名 | 数据类型 | 空值数量 | 空值比例(%) |\n")
+            f.write("|--------|----------|----------|-------------|\n")
+            for col in leads_info['columns']:
+                dtype = leads_info['dtypes'].get(col, 'unknown')
+                null_count = leads_info['null_counts'].get(col, 0)
+                null_pct = leads_info['null_percentages'].get(col, 0)
+                f.write(f"| {col} | {dtype} | {null_count:,} | {null_pct}% |\n")
+            f.write("\n")
+        
+        # 写入订单数据基本信息
+        if orders_info is not None:
+            f.write("### 订单数据基本信息\n\n")
+            f.write(f"- **数据形状**: {orders_info['shape'][0]:,} 行 × {orders_info['shape'][1]} 列\n")
+            f.write(f"- **内存使用**: {orders_info['memory_usage']} MB\n")
+            f.write(f"- **字段数量**: {len(orders_info['columns'])}\n")
+            f.write(f"- **总空值数**: {sum(orders_info['null_counts'].values()):,}\n\n")
+            
+            # 字段信息表格
+            f.write("#### 字段详细信息\n\n")
+            f.write("| 字段名 | 数据类型 | 空值数量 | 空值比例(%) |\n")
+            f.write("|--------|----------|----------|-------------|\n")
+            for col in orders_info['columns']:
+                dtype = orders_info['dtypes'].get(col, 'unknown')
+                null_count = orders_info['null_counts'].get(col, 0)
+                null_pct = orders_info['null_percentages'].get(col, 0)
+                f.write(f"| {col} | {dtype} | {null_count:,} | {null_pct}% |\n")
+            f.write("\n")
+        
+        if leads_info is None and orders_info is None:
+            f.write("- 数据加载失败，无法获取基本信息\n\n")
+        else:
+            f.write("- 数据加载和验证已完成\n")
+            f.write("- 线索数据和订单数据结构检查通过\n")
+            f.write("- 日期字段预处理完成\n\n")
         
         # 模块二：线索转化率综合分析
         f.write("## 模块二：线索转化率综合分析报告\n\n")
@@ -964,7 +1039,7 @@ def main():
     print("="*80)
     
     # 模块一：数据基本信息打印
-    leads_df, orders_df = module_one_data_info()
+    leads_df, orders_df, leads_info, orders_info = module_one_data_info()
     
     module_two_results = None
     module_three_results = None
@@ -977,11 +1052,11 @@ def main():
         module_three_results = module_three_normalize_analysis(leads_df, orders_df)
         
         # 生成综合报告
-        generate_comprehensive_report(module_two_results, module_three_results)
+        generate_comprehensive_report(module_two_results, module_three_results, leads_info, orders_info)
     else:
         print("数据加载失败，程序终止")
         # 即使数据加载失败，也生成一个基础报告
-        generate_comprehensive_report()
+        generate_comprehensive_report(leads_info=leads_info, orders_info=orders_info)
     
     print("\n" + "="*80)
     print("所有分析模块执行完成")
